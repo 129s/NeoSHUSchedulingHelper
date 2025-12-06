@@ -1,0 +1,34 @@
+:root {
+	/* Color roles (Material-aligned aliases with fallbacks) */
+	--ui-surface: var(--md-sys-color-surface, #ffffff);
+	--ui-surface-alt: var(--md-sys-color-surface-container, #f5f5f7);
+	--ui-surface-muted: var(--md-sys-color-surface-container-low, #f8f9fb);
+	--ui-border: var(--md-sys-color-outline-variant, rgba(15, 18, 35, 0.12));
+	--ui-border-strong: var(--md-sys-color-outline, rgba(15, 18, 35, 0.2));
+	--ui-accent: var(--md-sys-color-primary, #1e3a8a);
+	--ui-accent-soft: color-mix(in srgb, var(--ui-accent) 12%, #ffffff);
+	--ui-warn: var(--md-sys-color-error, #b91c1c);
+	--ui-warn-soft: color-mix(in srgb, var(--ui-warn) 12%, #ffffff);
+	--ui-muted: var(--md-sys-color-on-surface-variant, #6b7280);
+
+	/* Shape */
+	--ui-radius-sm: var(--md-sys-shape-corner-small, 0.4rem);
+	--ui-radius-md: var(--md-sys-shape-corner-medium, 0.6rem);
+	--ui-radius-lg: var(--md-sys-shape-corner-large, 0.75rem);
+
+	/* Spacing */
+	--ui-space-1: 0.25rem;
+	--ui-space-2: 0.35rem;
+	--ui-space-3: 0.5rem;
+	--ui-space-4: 0.75rem;
+	--ui-space-5: 1rem;
+
+	/* Typography scale (relative) */
+	--ui-font-sm: 0.85rem;
+	--ui-font-md: 0.95rem;
+	--ui-font-lg: 1.05rem;
+
+	/* Elevation */
+	--ui-elev-1: 0 2px 8px rgba(15, 18, 35, 0.08);
+	--ui-elev-2: 0 8px 24px rgba(15, 18, 35, 0.12);
+}

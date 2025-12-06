@@ -8,6 +8,7 @@ import json
 import os
 import time
 import threading
+from pathlib import Path
 from typing import Dict, List, Tuple
 from urllib.parse import urljoin
 
@@ -26,6 +27,10 @@ COURSE_LIST_ENDPOINT = (
 COURSE_DETAIL_ENDPOINT = (
     f"{JWXT_HOST}/jwglxt/xsxk/zzxkyzbjk_cxJxbWithKchZzxkYzb.html?gnmkdm=N253512"
 )
+
+SCRIPT_ROOT = Path(__file__).resolve().parent
+DEFAULT_OUTPUT_DIR = SCRIPT_ROOT / "data"
+DEFAULT_SECRETS_FILE = SCRIPT_ROOT / ".secrets.json"
 
 RSA_PUBKEY = """-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDl/aCgRl9f/4ON9MewoVnV58OL
@@ -118,6 +123,65 @@ def encrypt_password(password: str) -> str:
     key = rsa.PublicKey.load_pkcs1_openssl_pem(RSA_PUBKEY.encode())
     encrypted = rsa.encrypt(password.encode(), key)
     return base64.b64encode(encrypted).decode()
+
+
+def _is_subpath(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_output_dir(output_dir: str | None) -> Path:
+    target = (Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR).expanduser().resolve()
+    allowed_root = SCRIPT_ROOT
+    if not _is_subpath(target, allowed_root):
+        raise ValueError(f"Output path {target} is outside allowed root {allowed_root}")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def load_local_secrets(path: Path) -> Tuple[str | None, str | None]:
+    if not path.exists():
+        return None, None
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            return data.get("username"), data.get("password")
+    except Exception:
+        return None, None
+
+
+def resolve_credentials(
+    args: argparse.Namespace, secrets_path: Path = DEFAULT_SECRETS_FILE
+) -> Tuple[str, str]:
+    # CLI flags take precedence
+    if args.username and (args.password or args.password_stdin):
+        password = (
+            input().rstrip("\n") if args.password_stdin else args.password or ""
+        )
+        if not password:
+            raise RuntimeError("Password not provided")
+        return args.username, password
+
+    # Env fallback
+    env_username = os.environ.get("JWXT_USERNAME")
+    env_password = os.environ.get("JWXT_PASSWORD")
+    if env_username and env_password:
+        return env_username, env_password
+
+    # Local secrets file fallback
+    file_user, file_pass = load_local_secrets(secrets_path)
+    if file_user and file_pass:
+        return file_user, file_pass
+
+    # Prompt as last resort
+    username = args.username or getpass.getuser()
+    password = getpass.getpass("Password: ")
+    if not username or not password:
+        raise RuntimeError("Missing username or password")
+    return username, password
 
 
 class JWXTCrawler:
@@ -315,6 +379,12 @@ class JWXTCrawler:
             detail.get("jsxx", "")
         )
         limitations = self._build_limitations(detail, base_info)
+        academy = self._extract_academy(detail, base_info)
+        major = self._extract_major(detail, base_info)
+        teaching_mode = self._extract_teaching_mode(detail, base_info)
+        language_mode = self._extract_language_mode(detail, base_info)
+        selection_note = self._extract_selection_note(detail, base_info)
+        class_status = self._extract_class_status(detail, base_info)
 
         return {
             "courseId": base_info.get("courseId", ""),
@@ -331,6 +401,12 @@ class JWXTCrawler:
             "limitations": limitations,
             "teachingClassId": detail.get("jxb_id", ""),
             "batchId": params.get("xkkz_id", ""),
+            "academy": academy,
+            "major": major,
+            "teachingMode": teaching_mode,
+            "languageMode": language_mode,
+            "selectionNote": selection_note,
+            "classStatus": class_status,
         }
 
     @staticmethod
@@ -363,9 +439,140 @@ class JWXTCrawler:
             pass
         return notes
 
+    @staticmethod
+    def _extract_academy(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("kkxy"),
+            detail.get("kkxy_name"),
+            detail.get("kkxy_mc"),
+            detail.get("kkxymc"),
+            detail.get("kkxyid"),
+            detail.get("kkxyId"),
+            detail.get("dwmc"),
+            detail.get("kkdwmc"),
+            base_info.get("kkxy"),
+            base_info.get("kkxy_name"),
+            base_info.get("kkxymc"),
+            base_info.get("dwmc"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _extract_major(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("zyfxmc"),
+            detail.get("zymc"),
+            detail.get("zyhmc"),
+            detail.get("zyfxname"),
+            base_info.get("zyfxmc"),
+            base_info.get("zymc"),
+            base_info.get("zyhmc"),
+            base_info.get("zyfxname"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _extract_teaching_mode(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("jxms"),
+            detail.get("jxmsmc"),
+            detail.get("skfs"),
+            detail.get("skfsmc"),
+            detail.get("jxms_name"),
+            base_info.get("jxms"),
+            base_info.get("jxmsmc"),
+            base_info.get("skfs"),
+            base_info.get("skfsmc"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _extract_language_mode(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("yylx"),
+            detail.get("yylxmc"),
+            detail.get("yyxz"),
+            detail.get("yyxzmc"),
+            detail.get("yyms"),
+            detail.get("yymsmc"),
+            base_info.get("yylx"),
+            base_info.get("yylxmc"),
+            base_info.get("yyxz"),
+            base_info.get("yyxzmc"),
+            base_info.get("yyms"),
+            base_info.get("yymsmc"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _extract_selection_note(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("xkbz"),
+            detail.get("xklybz"),
+            detail.get("bz"),
+            detail.get("kcbz"),
+            detail.get("bzxx"),
+            base_info.get("xkbz"),
+            base_info.get("xklybz"),
+            base_info.get("bz"),
+            base_info.get("kcbz"),
+            base_info.get("bzxx"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text and text != "--":
+                return text
+        return ""
+
+    @staticmethod
+    def _extract_class_status(detail: Dict, base_info: Dict) -> str:
+        candidates = [
+            detail.get("jxbzt"),
+            detail.get("krlx"),
+            detail.get("zt"),
+            detail.get("status"),
+            base_info.get("jxbzt"),
+            base_info.get("krlx"),
+            base_info.get("zt"),
+            base_info.get("status"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text and "停" in text:
+                return text
+        return ""
+
 
 def crawl(
-    output_dir: str,
+    output_dir: Path,
     username: str,
     password: str,
     max_courses: int | None = None,
@@ -408,7 +615,7 @@ def crawl(
         f"{fields.get('xkxqmc', fields.get('xkxqm', '')).strip()}".strip()
     ).strip()
 
-    os.makedirs(os.path.join(output_dir, "terms"), exist_ok=True)
+    os.makedirs(output_dir / "terms", exist_ok=True)
     result = {
         "backendOrigin": JWXT_HOST,
         "termName": term_name or term_code,
@@ -418,11 +625,11 @@ def crawl(
         ).hexdigest(),
         "courses": courses,
     }
-    term_path = os.path.join(output_dir, "terms", f"{term_code}.json")
+    term_path = output_dir / "terms" / f"{term_code}.json"
     with open(term_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False, indent=2)
 
-    with open(os.path.join(output_dir, "current.json"), "w", encoding="utf-8") as fh:
+    with open(output_dir / "current.json", "w", encoding="utf-8") as fh:
         json.dump([term_code], fh, ensure_ascii=False, indent=2)
 
     print(f"Saved {len(courses)} teaching classes to {term_path}")
@@ -430,7 +637,7 @@ def crawl(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="JWXT course crawler")
-    parser.add_argument("-u", "--username", required=True, help="学号")
+    parser.add_argument("-u", "--username", help="学号（默认读取本地密钥或环境变量）")
     parser.add_argument("-p", "--password", help="密码")
     parser.add_argument(
         "--password-stdin",
@@ -440,8 +647,13 @@ def main() -> None:
     parser.add_argument(
         "-o",
         "--output-dir",
-        default="data",
-        help="输出目录（默认 data）",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="输出目录（默认 crawler/data）",
+    )
+    parser.add_argument(
+        "--secrets-file",
+        default=str(DEFAULT_SECRETS_FILE),
+        help="本地密钥文件（默认 crawler/.secrets.json）",
     )
     parser.add_argument(
         "--limit",
@@ -450,15 +662,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.password_stdin:
-        password = input().rstrip("\n")
-    elif args.password:
-        password = args.password
-    else:
-        password = getpass.getpass("Password: ")
+    output_dir = resolve_output_dir(args.output_dir)
+    secrets_path = Path(args.secrets_file).expanduser().resolve()
+    username, password = resolve_credentials(args, secrets_path)
 
     requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
-    crawl(args.output_dir, args.username, password, max_courses=args.limit)
+    crawl(output_dir, username, password, max_courses=args.limit)
 
 
 if __name__ == "__main__":

@@ -1,2 +1,7 @@
 # Python virtual environment
 .venv/
+
+# Crawler local secrets and artifacts
+crawler/.secrets.json
+crawler/.secrets.yaml
+crawler/.secrets.yml

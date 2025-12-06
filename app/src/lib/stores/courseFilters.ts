@@ -1,0 +1,99 @@
+import { writable, type Writable } from 'svelte/store';
+import {
+	getSelectionFiltersConfig,
+	type DisplayOptionId,
+	type LimitMode,
+	type LimitRuleKey,
+	type SelectionFiltersConfig
+} from '../../config/selectionFilters';
+import { courseCatalog } from '../data/catalog/courseCatalog';
+import { getTaxonomyOptions } from '../data/taxonomy/taxonomyRegistry';
+
+export type ConflictFilterMode = 'any' | 'no-conflict' | 'no-conflic' | 'no-weak-impossible' | 'no-impossible';
+
+export interface CourseFilterState {
+	keyword: string;
+	regexEnabled: boolean;
+	matchCase: boolean;
+	regexTargets: string[];
+	campus: string;
+	college: string;
+	major: string;
+	minCredit: number | null;
+	maxCredit: number | null;
+	capacityMin: number | null;
+	teachingLanguage: string[];
+	teachingMode: string[];
+	teachingModeOther: string;
+	specialFilter: 'all' | 'sports-only' | 'exclude-sports';
+	weekSpanFilter: 'any' | 'upper' | 'lower' | 'full';
+	weekParityFilter: 'any' | 'odd' | 'even' | 'all';
+	displayOption: DisplayOptionId;
+	limitModes: Partial<Record<LimitRuleKey, LimitMode>>;
+	sortOptionId: string;
+	conflictMode: ConflictFilterMode;
+}
+
+export const selectionFiltersConfig = getSelectionFiltersConfig();
+
+const DEFAULT_FILTER_STATE: CourseFilterState = {
+	keyword: '',
+	regexEnabled: false,
+	matchCase: false,
+	regexTargets: selectionFiltersConfig.regex.targets,
+	campus: '',
+	college: '',
+	major: '',
+	minCredit: null,
+	maxCredit: null,
+	capacityMin: null,
+	teachingLanguage: [],
+	teachingMode: [],
+	teachingModeOther: '',
+	specialFilter: 'all',
+	weekSpanFilter: 'any',
+	weekParityFilter: 'any',
+	displayOption: selectionFiltersConfig.displayOptions[0]?.id ?? 'all',
+	limitModes: {},
+	sortOptionId: selectionFiltersConfig.sortOptions[0]?.id ?? 'courseCode',
+	conflictMode: 'any'
+};
+
+export interface CourseFilterOptions {
+	campuses: string[];
+	colleges: string[];
+	majors: string[];
+	displayOptions: SelectionFiltersConfig['displayOptions'];
+	limitRules: SelectionFiltersConfig['limitRules'];
+	sortOptions: SelectionFiltersConfig['sortOptions'];
+	regexTargets: string[];
+	teachingLanguages: string[];
+	teachingModes: string[];
+}
+
+const taxonomyOptions = getTaxonomyOptions();
+
+export const filterOptions: CourseFilterOptions = {
+	campuses: collectOptions(courseCatalog.map((entry) => entry.campus)),
+	colleges: taxonomyOptions.colleges.length
+		? taxonomyOptions.colleges
+		: collectOptions(courseCatalog.map((entry) => entry.college ?? '')),
+	majors: taxonomyOptions.majors.length ? taxonomyOptions.majors : collectOptions(courseCatalog.map((entry) => entry.major ?? '')),
+	displayOptions: selectionFiltersConfig.displayOptions,
+	limitRules: selectionFiltersConfig.limitRules,
+	sortOptions: selectionFiltersConfig.sortOptions,
+	regexTargets: selectionFiltersConfig.regex.targets,
+	teachingLanguages: ['中文', '全英', '双语', '未指定'],
+	teachingModes: Array.from(new Set(courseCatalog.map((c) => c.teachingMode ?? '').filter(Boolean)))
+};
+
+export function createCourseFilterStore(initial?: Partial<CourseFilterState>): Writable<CourseFilterState> {
+	return writable({
+		...DEFAULT_FILTER_STATE,
+		...initial
+	});
+}
+
+function collectOptions(values: string[]) {
+	return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}

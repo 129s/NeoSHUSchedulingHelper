@@ -1,0 +1,325 @@
+import type {
+	CalendarConfig,
+	CourseRecord,
+	InsaneCourseData,
+	ScheduleChunk,
+	SectionEntry,
+	WeekParity,
+	WeekPattern,
+	WeekSpan
+} from '../InsaneCourseData';
+import type { RawCourseSnapshot } from '../InsaneCourseParser';
+import { resolveParser } from '../parsers';
+import { getDatasetConfig } from '../../../config/dataset';
+import rawSnapshot from '../../../../../crawler/data/terms/2025-16.json';
+import type { CourseTaxonomyInfo } from '../../types/taxonomy';
+import { resolveCourseTaxonomy } from './courseTaxonomy';
+import { initializeTaxonomyRegistry } from '../taxonomy/taxonomyRegistry';
+
+const datasetConfig = getDatasetConfig();
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+export interface ScheduleSummary {
+	day: number;
+	startPeriod: number;
+	endPeriod: number;
+	weeks: ScheduleChunk['weeks'];
+}
+
+export interface CourseLimitFlags {
+	capacityFull: boolean;
+	selectionForbidden: boolean;
+	dropForbidden: boolean;
+	locationClosed: boolean;
+	classClosed: boolean;
+}
+
+export interface CourseCatalogEntry {
+	id: string;
+	courseHash: string;
+	courseCode: string;
+	sectionId: string;
+	title: string;
+	teacher: string;
+	teacherId?: string;
+	campus: string;
+	credit: number;
+	capacity: number;
+	vacancy: number;
+	slot: string;
+	location: string;
+	weekSpan: WeekSpan;
+	weekParity: WeekParity;
+	status?: 'limited' | 'full' | 'hot';
+	note?: string;
+	college?: string;
+	major?: string;
+	courseAttribute?: string;
+	teachingLanguage?: CourseRecord['teachingLanguage'];
+	specialType?: string[];
+	specialTags?: string[];
+	specialData1?: string;
+	specialData2?: string;
+	specialData3?: string;
+	specialData4?: string;
+	specialData5?: string;
+	specialData6?: string;
+	specialData7?: string;
+	specialData8?: string;
+	specialData9?: string;
+	specialData10?: string;
+	taxonomy?: CourseTaxonomyInfo;
+	timeChunks: ScheduleSummary[];
+	limits: CourseLimitFlags;
+	teachingMode?: string;
+	languageMode?: string;
+	selectionNote?: string;
+	classStatus?: string;
+}
+
+const snapshot = rawSnapshot as RawCourseSnapshot;
+const parser = resolveParser(snapshot.termName);
+
+if (!parser) {
+	throw new Error(`未找到匹配 ${snapshot.termName} 的解析器`);
+}
+
+const insaneData = parser.parse(snapshot);
+
+export const courseDataset = insaneData;
+export const courseCatalog: CourseCatalogEntry[] = buildCatalog(insaneData);
+export const courseCatalogMap = new Map(courseCatalog.map((entry) => [entry.id, entry]));
+export const datasetMeta = insaneData.meta;
+initializeTaxonomyRegistry(datasetMeta.semester, courseCatalog);
+
+const DEFAULT_SEED_COUNT = 3;
+const fallbackSeeds =
+	datasetConfig.seedSelectionIds && datasetConfig.seedSelectionIds.length > 0
+		? datasetConfig.seedSelectionIds
+		: courseCatalog.slice(0, DEFAULT_SEED_COUNT).map((entry) => entry.id);
+
+export const seedSelectedCourseIds = new Set(
+	fallbackSeeds.filter((id) => courseCatalogMap.has(id))
+);
+
+function buildCatalog(data: InsaneCourseData): CourseCatalogEntry[] {
+	const entries: CourseCatalogEntry[] = [];
+	const calendar = data.meta.calendarConfig;
+
+	for (const course of data.courses) {
+		if (!course.sections.length) {
+			entries.push(
+				createEntry({
+					course,
+					section: {
+						sectionId: 'default',
+						teachers: [],
+						locations: [],
+						classtime: [],
+						scheduleChunks: []
+					},
+					index: 0,
+					calendar
+				})
+			);
+			continue;
+		}
+
+		course.sections.forEach((section, index) => {
+			entries.push(createEntry({ course, section, index, calendar }));
+		});
+	}
+
+	return entries;
+}
+
+function createEntry({
+	course,
+	section,
+	index,
+	calendar
+}: {
+	course: CourseRecord;
+	section: SectionEntry;
+	index: number;
+	calendar: CalendarConfig;
+}): CourseCatalogEntry {
+	const weekPattern = extractWeekPattern(section);
+	const { weekSpan, weekParity } = deriveWeekInfo(weekPattern);
+	const slot = formatSlot(section.scheduleChunks ?? [], calendar);
+	const location = formatLocations(section);
+	const teacher = formatTeachers(section, course);
+	const teacherId = section.teachers?.[0]?.teacherId ?? course.teacherCode ?? '';
+	const status = deriveStatus(course);
+	const sectionKey = section.sectionId ?? `section-${index + 1}`;
+	const taxonomy = resolveCourseTaxonomy(course);
+	const limits = deriveLimitFlags(course);
+	const timeChunks = summarizeChunks(section.scheduleChunks ?? []);
+	const specialTags: string[] = [];
+	if ((course.specialType ?? []).includes('sports')) specialTags.push('体育');
+	const specialDataSlots: Array<string | undefined> = [
+		course.specialData1,
+		course.specialData2,
+		course.specialData3,
+		course.specialData4,
+		course.specialData5,
+		course.specialData6,
+		course.specialData7,
+		course.specialData8,
+		course.specialData9,
+		course.specialData10
+	];
+
+	return {
+		id: `${course.hash}:${sectionKey}`,
+		courseHash: course.hash,
+		courseCode: course.courseCode,
+		sectionId: sectionKey,
+		title: course.title,
+		teacher,
+		teacherId,
+		campus: course.campus,
+		credit: course.credit,
+		capacity: course.capacity,
+		vacancy: course.vacancy,
+		slot,
+		location,
+		weekSpan,
+		weekParity,
+		status,
+		note: buildNote(course, section),
+		college: course.academy ?? course.attributes?.academy ?? taxonomy.college ?? '未标注',
+		major: course.major ?? course.attributes?.major ?? taxonomy.major ?? '未标注',
+		courseAttribute: taxonomy.courseAttribute ?? '未标注',
+		teachingLanguage: course.teachingLanguage ?? '未指定',
+		specialType: course.specialType ?? [],
+		specialTags,
+		specialData1: specialDataSlots[0],
+		specialData2: specialDataSlots[1],
+		specialData3: specialDataSlots[2],
+		specialData4: specialDataSlots[3],
+		specialData5: specialDataSlots[4],
+		specialData6: specialDataSlots[5],
+		specialData7: specialDataSlots[6],
+		specialData8: specialDataSlots[7],
+		specialData9: specialDataSlots[8],
+		specialData10: specialDataSlots[9],
+		taxonomy,
+		teachingMode: course.teachingMode ?? course.attributes?.teachingMode,
+		languageMode: course.languageMode ?? course.attributes?.languageMode,
+		selectionNote: course.selectionNote ?? course.attributes?.selectionNote,
+		classStatus: course.classStatus ?? course.attributes?.classStatus,
+		timeChunks,
+		limits
+	};
+}
+
+function extractWeekPattern(section: SectionEntry): WeekPattern | undefined {
+	for (const daySlots of section.classtime ?? []) {
+		for (const slot of daySlots ?? []) {
+			if (slot) {
+				return slot.weekPattern;
+			}
+		}
+	}
+	return undefined;
+}
+
+function deriveWeekInfo(pattern?: WeekPattern): { weekSpan: WeekSpan; weekParity: WeekParity } {
+	if (!pattern) {
+		return { weekSpan: '全学期', weekParity: '全部周' };
+	}
+	return {
+		weekSpan: pattern.span,
+		weekParity: pattern.parity
+	};
+}
+
+function formatSlot(chunks: ScheduleChunk[], calendar: CalendarConfig): string {
+	if (!chunks.length) return '未排课';
+	return chunks
+		.map((chunk) => {
+			const dayLabel = WEEKDAY_LABELS[chunk.day] ?? calendar.weekdays?.[chunk.day] ?? `第${chunk.day + 1}天`;
+			const startLabel = chunk.startPeriod + 1;
+			const endLabel = chunk.endPeriod + 1;
+			const periodText = startLabel === endLabel ? `第${startLabel}节` : `第${startLabel}-${endLabel}节`;
+			return `${dayLabel} ${periodText}`;
+		})
+		.join(' / ');
+}
+
+function formatLocations(section: SectionEntry): string {
+	const tokens = new Set<string>();
+	section.locations?.forEach((loc) => {
+		const parts = [loc.campus, loc.building, loc.room].filter(Boolean).join(' ');
+		if (parts) tokens.add(parts);
+	});
+	section.scheduleChunks?.forEach((chunk) => {
+		chunk.locations?.forEach((loc) => {
+			const parts = [loc.campus, loc.building, loc.room].filter(Boolean).join(' ');
+			if (parts) tokens.add(parts);
+		});
+	});
+	return tokens.size ? Array.from(tokens).join(' / ') : '待排教室';
+}
+
+function formatTeachers(section: SectionEntry, course: CourseRecord): string {
+	const teachers = section.teachers?.length ? section.teachers : [{ teacherId: course.teacherCode ?? '', name: course.teacherName }];
+	const names = teachers.map((teacher) => teacher.name).filter(Boolean);
+	return names.length ? names.join('、') : '未公布教师';
+}
+
+function deriveStatus(course: CourseRecord): 'limited' | 'full' | 'hot' | undefined {
+	if (course.vacancy <= 0) return 'full';
+	if (course.vacancy > 0 && course.vacancy <= Math.max(5, Math.floor(course.capacity * 0.1))) return 'limited';
+	if (course.vacancy > 0 && course.vacancy <= Math.max(15, Math.floor(course.capacity * 0.25))) return 'hot';
+	return undefined;
+}
+
+function buildNote(course: CourseRecord, section: SectionEntry): string {
+	const seatInfo =
+		course.vacancy >= 0 ? `余量 ${course.vacancy}/${course.capacity}` : `容量 ${course.capacity}`;
+	const sectionLabel = section.sectionId ? `班号 ${section.sectionId}` : null;
+	const activities = Array.from(
+		new Set(section.scheduleChunks?.map((chunk) => chunk.activity).filter(Boolean) ?? [])
+	);
+	const activityLabel = activities.length ? activities.join('/') : null;
+	return [seatInfo, sectionLabel, activityLabel].filter(Boolean).join(' · ');
+}
+
+function summarizeChunks(chunks: ScheduleChunk[]): ScheduleSummary[] {
+	return chunks.map(chunk => ({
+		day: chunk.day,
+		startPeriod: chunk.startPeriod,
+		endPeriod: chunk.endPeriod,
+		weeks: chunk.weeks
+	}));
+}
+
+function deriveLimitFlags(course: CourseRecord): CourseLimitFlags {
+	const phrases = new Set<string>();
+	if (course.attributes?.constraintsRaw) {
+		course.attributes.constraintsRaw
+			.split(/[,;]+/)
+			.map(token => token.trim())
+			.filter(Boolean)
+			.forEach(token => phrases.add(token));
+	}
+	course.constraints
+		?.map(constraint => constraint.value)
+		.filter(Boolean)
+		.forEach(value => phrases.add(value));
+
+	if (course.vacancy <= 0) {
+		phrases.add('人数已满');
+	}
+
+	const mergedText = Array.from(phrases).join(';');
+	return {
+		capacityFull: phrases.has('人数已满') || course.vacancy <= 0,
+		selectionForbidden: /禁止选课|不可选课|暂不可选/.test(mergedText),
+		dropForbidden: /禁止退课|不可退课/.test(mergedText),
+		locationClosed: /地点不开|场地未开放|未开放/.test(mergedText),
+		classClosed: /停/.test(course.classStatus ?? course.attributes?.classStatus ?? '')
+	};
+}
