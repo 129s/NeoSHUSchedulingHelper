@@ -50,7 +50,7 @@ export interface CourseCatalogEntry {
 	location: string;
 	weekSpan: WeekSpan;
 	weekParity: WeekParity;
-	status?: 'limited' | 'full' | 'hot';
+	status?: 'limited' | 'full';
 	note?: string;
 	college?: string;
 	major?: string;
@@ -269,10 +269,9 @@ function formatTeachers(section: SectionEntry, course: CourseRecord): string {
 	return names.length ? names.join('、') : '未公布教师';
 }
 
-function deriveStatus(course: CourseRecord): 'limited' | 'full' | 'hot' | undefined {
+function deriveStatus(course: CourseRecord): 'limited' | 'full' | undefined {
 	if (course.vacancy <= 0) return 'full';
 	if (course.vacancy > 0 && course.vacancy <= Math.max(5, Math.floor(course.capacity * 0.1))) return 'limited';
-	if (course.vacancy > 0 && course.vacancy <= Math.max(15, Math.floor(course.capacity * 0.25))) return 'hot';
 	return undefined;
 }
 

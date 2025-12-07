@@ -17,9 +17,9 @@
 	export let collapsed = false;
 	export let colorSeed: string;
 	export let specialInfo: string | undefined = undefined;
-export let specialTags: string[] = [];
-export let status: 'limited' | 'full' | 'hot' | undefined = undefined;
-export let hoverable = true;
+	export let specialTags: string[] = [];
+	export let status: 'limited' | 'full' | undefined = undefined;
+	export let hoverable = true;
 export let onHover: (() => void) | undefined;
 export let onLeave: (() => void) | undefined;
 export let toneIndex = 0;
@@ -136,7 +136,7 @@ export let onToggleSelect: (() => void) | undefined = undefined;
 				{/if}
 				{#if status}
 					<span class={`status ${status}`}>
-						{status === 'hot' ? '热门' : status === 'limited' ? '余量紧张' : '已满'}
+						{status === 'limited' ? '余量紧张' : '已满'}
 					</span>
 				{/if}
 			</div>
@@ -354,11 +354,6 @@ export let onToggleSelect: (() => void) | undefined = undefined;
 		border-radius: 999px;
 		background: rgba(0, 0, 0, 0.08);
 		color: #1f2937;
-	}
-
-	.status.hot {
-		background: rgba(239, 68, 68, 0.15);
-		color: #b91c1c;
 	}
 
 	.status.limited {

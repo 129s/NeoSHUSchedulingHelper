@@ -77,6 +77,13 @@ Course cards MUST expose actions for joining wishlist/selected and for adding so
 - **WHEN** a card represents a group (collapsed or expanded)
 - **THEN** it shows intent buttons; “必” adds hard must-pick-one, “不选” excludes selected section(s), and changes propagate to the solver lists.
 
+### Requirement: Status chips only signal deterministic states
+Status badges on course cards MUST only convey deterministic capacity states (`余量紧张` for limited seats, `已满` for zero/overflow). Soft descriptors such as “热门”/“火爆” are forbidden unless backed by explicit data fields.
+
+#### Scenario: Deterministic status
+- **WHEN** capacity warning badges render
+- **THEN** they use the limited/full copy above; no “热门” or其它模糊词出现。
+
 ### Requirement: Include/Exclude micro selection on lists
 Course/group list rows MUST provide a lightweight include/exclude affordance: a small square checkbox to mark a section or group as focused for intent editing. Tapping A/B buttons maps to include (必选) and exclude states; tapping again clears the state. Already-marked items MUST show a clear/cancel affordance so users can return to neutral.
 
@@ -97,4 +104,3 @@ The rule list (constraint list) MUST surface a compact checkbox column per row a
 #### Scenario: Use header controls
 - **WHEN** rows are selected
 - **THEN** the user sets 包含/排除 + 硬/软 in the header controls and clicks 添加 to apply, or 取消 to clear the selections.
-
