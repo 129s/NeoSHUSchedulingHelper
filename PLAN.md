@@ -9,4 +9,4 @@
 | FE-NOW-2  | 落地 shared list meta-template + token pack         | NOW       | code/ui        | TODO   | FE-NOW-1           | ConstraintList/DiagnosticsList 迁移，参考 modularize change |
 | FE-NOW-3  | 统一 filter/hover template + pagination footer      | NOW       | code/ui        | TODO   | FE-NOW-2           | 复用 shared template、完成 footer hook |
 | FE-LATER-1| 设计 solver tab linear flow + polish 行为           | LATER     | spec/ui        | TODO   | FE-NOW-2           | 结合 FE-NOW 成果扩展 polish spec |
-| FE-LATER-2| 为 solver tab 配置 UI review (MCP + Gemini)         | LATER     | mcp/ui-review  | TODO   | FE-NOW-3, MIG-3    | MCP 驱动 UI 校验/截图流程 |
+| FE-LATER-2| 为 solver tab 配置 UI review (MCP + Gemini)         | LATER     | mcp/ui-review  | DONE   | FE-NOW-3, MIG-3    | 已完成 MCP 驱动的 UI 校验流程配置 |
