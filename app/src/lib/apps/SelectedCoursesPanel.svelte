@@ -222,5 +222,5 @@ $: neighborRange = (() => {
 </section>
 
 <style lang="scss">
-	@use "./SelectedCoursesPanel.styles.scss" as *;
+	@use "$lib/styles/apps/SelectedCoursesPanel.styles.scss" as *;
 </style>

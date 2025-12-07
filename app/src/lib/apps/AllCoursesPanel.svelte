@@ -263,7 +263,7 @@ $: if ($paginationMode !== lastMode) {
 <SelectionModePrompt open={showModePrompt} onClose={() => (showModePrompt = false)} />
 
 <style lang="scss">
-	@use "./AllCoursesPanel.styles.scss" as *;
+	@use "$lib/styles/apps/AllCoursesPanel.styles.scss" as *;
 
 	.intent-actions {
 		display: inline-flex;

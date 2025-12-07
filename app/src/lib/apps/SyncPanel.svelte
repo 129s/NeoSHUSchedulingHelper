@@ -212,5 +212,5 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 </section>
 
 <style lang="scss">
-	@use "./SyncPanel.styles.scss" as *;
+	@use "$lib/styles/apps/SyncPanel.styles.scss" as *;
 </style>

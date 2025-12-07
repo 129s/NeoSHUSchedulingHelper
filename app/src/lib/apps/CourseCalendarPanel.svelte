@@ -86,5 +86,5 @@
 </section>
 
 <style lang="scss">
-	@use "./CourseCalendarPanel.styles.scss" as *;
+	@use "$lib/styles/apps/CourseCalendarPanel.styles.scss" as *;
 </style>

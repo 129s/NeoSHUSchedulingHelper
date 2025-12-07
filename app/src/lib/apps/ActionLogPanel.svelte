@@ -160,7 +160,7 @@
 </section>
 
 <style lang="scss">
-	@use "./ActionLogPanel.styles.scss" as *;
+	@use "$lib/styles/apps/ActionLogPanel.styles.scss" as *;
 
 	.log-list {
 		display: flex;

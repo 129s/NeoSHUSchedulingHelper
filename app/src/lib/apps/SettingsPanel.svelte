@@ -134,5 +134,5 @@
 </section>
 
 <style lang="scss">
-	@use "./SettingsPanel.styles.scss" as *;
+	@use "$lib/styles/apps/SettingsPanel.styles.scss" as *;
 </style>

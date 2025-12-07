@@ -750,7 +750,7 @@
 </section>
 
 <style lang="scss">
-	@use "./SolverPanel.styles.scss" as *;
+	@use "$lib/styles/apps/SolverPanel.styles.scss" as *;
 
 	.solver-grid {
 		display: grid;
