@@ -54,8 +54,14 @@
 
 ## 7. Active Technologies
 
-（保留给 Spec Kit 脚本填充）
+- TypeScript + SvelteKit（`app/`）
+- SCSS token packs + Material Web theme aliases
+- DuckDB-Wasm 查询层 + parser/crawler 管线
+- MCP：chrome-devtools、openrouter-gemini
 
 ## Recent Changes
 
-（保留给 Spec Kit 脚本填充）
+- `openspec/changes/2025-migration`：完成 specs/changes 清理与 PLAN 基线
+- `openspec/changes/modularize-ui-templates`：补全文档（token pack、slot contract、rollout）
+- `.specify/scripts` 迁移到 `_disabled_scripts/` 防止自动执行
+- 根 `AGENTS.md` 补充 MCP 用法及配置示例
