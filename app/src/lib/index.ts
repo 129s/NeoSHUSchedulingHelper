@@ -2,6 +2,8 @@ export { default as DebugWorkbench } from './components/DebugWorkbench.svelte';
 export { default as DockPanel } from './components/DockPanel.svelte';
 export { default as ListSurface } from './components/ListSurface.svelte';
 export { default as FilterBar } from './components/FilterBar.svelte';
+export { default as Chip } from './components/Chip.svelte';
+export { default as ChipGroup } from './components/ChipGroup.svelte';
 export * from './types/dock';
 export * from './data/InsaneCourseData';
 export * from './data/manualUpdates';

@@ -1,8 +1,10 @@
 <script lang="ts">
-	import type { Writable } from 'svelte/store';
-	import type { CourseFilterState, CourseFilterOptions, ConflictFilterMode } from '$lib/stores/courseFilters';
-	import type { LimitRuleKey, LimitMode } from '../../config/selectionFilters';
-	import FilterBar from '$lib/components/FilterBar.svelte';
+import type { Writable } from 'svelte/store';
+import type { CourseFilterState, CourseFilterOptions, ConflictFilterMode } from '$lib/stores/courseFilters';
+import type { LimitRuleKey, LimitMode } from '../../config/selectionFilters';
+import FilterBar from '$lib/components/FilterBar.svelte';
+import Chip from '$lib/components/Chip.svelte';
+import ChipGroup from '$lib/components/ChipGroup.svelte';
 
 	export let filters: Writable<CourseFilterState>;
 	export let options: CourseFilterOptions;
@@ -63,17 +65,15 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 
 	<svelte:fragment slot="chips">
 		<div class="chip-row">
-			<label class="chip toggle">
-				<input type="checkbox" checked={$filters.regexEnabled} disabled={showAdvanced} on:change={(e) => updateFilter('regexEnabled', (e.currentTarget as HTMLInputElement).checked)} />
-				<span>正则</span>
-			</label>
-			<label class="chip toggle">
-				<input type="checkbox" checked={$filters.matchCase} disabled={showAdvanced} on:change={(e) => updateFilter('matchCase', (e.currentTarget as HTMLInputElement).checked)} />
-				<span>大小写</span>
-			</label>
-			<button type="button" class="chip ghost" on:click={() => (showAdvanced = !showAdvanced)}>
+			<Chip selectable selected={$filters.regexEnabled} disabled={showAdvanced} on:click={() => updateFilter('regexEnabled', !$filters.regexEnabled)}>
+				正则
+			</Chip>
+			<Chip selectable selected={$filters.matchCase} disabled={showAdvanced} on:click={() => updateFilter('matchCase', !$filters.matchCase)}>
+				大小写
+			</Chip>
+			<Chip variant="accent" on:click={() => (showAdvanced = !showAdvanced)}>
 				{showAdvanced ? '关闭高级' : '高级筛选'}
-			</button>
+			</Chip>
 		</div>
 	</svelte:fragment>
 
@@ -188,54 +188,50 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 					</button>
 					{#if showLangMode}
 						<div class="fold-body two-cols">
-							<div>
-								<span>教学语言</span>
-								<div class="chips">
-									{#each options.teachingLanguages as lang}
-										<label class="chip">
-											<input
-												type="checkbox"
-												checked={$filters.teachingLanguage.includes(lang)}
-												on:change={(e) => {
-													const checked = (e.currentTarget as HTMLInputElement).checked;
-													const set = new Set($filters.teachingLanguage);
-													if (checked) set.add(lang);
-													else set.delete(lang);
-													updateFilter('teachingLanguage', Array.from(set));
-												}}
-											/>
-											<span>{lang}</span>
-										</label>
-									{/each}
-								</div>
-							</div>
-							<div>
-								<span>教学模式</span>
-								<div class="chips">
-									{#each options.teachingModes as modeOpt}
-										<label class="chip">
-											<input
-												type="checkbox"
-												checked={$filters.teachingMode.includes(modeOpt)}
-												on:change={(e) => {
-													const checked = (e.currentTarget as HTMLInputElement).checked;
-													const set = new Set($filters.teachingMode);
-													if (checked) set.add(modeOpt);
-													else set.delete(modeOpt);
-													updateFilter('teachingMode', Array.from(set));
-												}}
-											/>
-											<span>{modeOpt}</span>
-										</label>
-									{/each}
-								</div>
+							<ChipGroup label="教学语言">
+								{#each options.teachingLanguages as lang}
+									<Chip
+										selectable
+										selected={$filters.teachingLanguage.includes(lang)}
+										on:click={() => {
+											const set = new Set($filters.teachingLanguage);
+											if (set.has(lang)) {
+											set.delete(lang);
+											} else {
+											set.add(lang);
+											}
+											updateFilter('teachingLanguage', Array.from(set));
+										}}
+									>
+										{lang}
+									</Chip>
+								{/each}
+							</ChipGroup>
+							<ChipGroup label="教学模式">
+								{#each options.teachingModes as modeOpt}
+									<Chip
+										selectable
+										selected={$filters.teachingMode.includes(modeOpt)}
+										on:click={() => {
+											const set = new Set($filters.teachingMode);
+											if (set.has(modeOpt)) {
+											set.delete(modeOpt);
+											} else {
+											set.add(modeOpt);
+											}
+											updateFilter('teachingMode', Array.from(set));
+										}}
+									>
+										{modeOpt}
+									</Chip>
+								{/each}
 								<input
 									type="text"
 									placeholder="其他教学模式（文本包含）"
 									value={$filters.teachingModeOther}
 									on:input={(e) => updateFilter('teachingModeOther', (e.currentTarget as HTMLInputElement).value)}
 								/>
-							</div>
+							</ChipGroup>
 						</div>
 					{/if}
 				</div>
@@ -254,28 +250,20 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 					</button>
 					{#if showWeekFold}
 						<div class="fold-body two-cols">
-							<div>
-								<span>单双周</span>
-								<div class="chips">
-									{#each ['any', 'odd', 'even', 'all'] as option}
-										<label class="chip">
-											<input type="radio" name="parity" value={option} checked={$filters.weekParityFilter === option} on:change={() => updateFilter('weekParityFilter', option as any)} />
-											<span>{option === 'any' ? '不筛' : option === 'odd' ? '单周' : option === 'even' ? '双周' : '全部周'}</span>
-										</label>
-									{/each}
-								</div>
-							</div>
-							<div>
-								<span>上/下半</span>
-								<div class="chips">
-									{#each ['any', 'upper', 'lower', 'full'] as option}
-										<label class="chip">
-											<input type="radio" name="span" value={option} checked={$filters.weekSpanFilter === option} on:change={() => updateFilter('weekSpanFilter', option as any)} />
-											<span>{option === 'any' ? '不筛' : option === 'upper' ? '前半' : option === 'lower' ? '后半' : '全学期'}</span>
-										</label>
-									{/each}
-								</div>
-							</div>
+							<ChipGroup label="单双周">
+								{#each ['any', 'odd', 'even', 'all'] as option}
+									<Chip selectable selected={$filters.weekParityFilter === option} on:click={() => updateFilter('weekParityFilter', option as any)}>
+										{option === 'any' ? '不筛' : option === 'odd' ? '单周' : option === 'even' ? '双周' : '全部周'}
+									</Chip>
+								{/each}
+							</ChipGroup>
+							<ChipGroup label="上/下半">
+								{#each ['any', 'upper', 'lower', 'full'] as option}
+									<Chip selectable selected={$filters.weekSpanFilter === option} on:click={() => updateFilter('weekSpanFilter', option as any)}>
+										{option === 'any' ? '不筛' : option === 'upper' ? '前半' : option === 'lower' ? '后半' : '全学期'}
+									</Chip>
+								{/each}
+							</ChipGroup>
 						</div>
 					{/if}
 				</div>

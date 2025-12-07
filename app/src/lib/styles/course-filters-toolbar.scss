@@ -33,28 +33,6 @@
 	gap: var(--ui-space-2);
 }
 
-.chip {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--ui-space-1);
-	border-radius: 999px;
-	border: 1px solid var(--ui-border);
-	padding: var(--ui-space-1) var(--ui-space-3);
-	background: var(--ui-surface-muted);
-	font-size: var(--ui-font-sm);
-}
-
-.chip input {
-	margin: 0;
-}
-
-.chip.ghost {
-	background: var(--ui-accent-soft);
-	color: var(--ui-accent);
-	border-color: var(--ui-border-strong);
-	cursor: pointer;
-}
-
 .settings-row {
 	display: flex;
 	justify-content: flex-end;
@@ -135,15 +113,5 @@
 	border-radius: var(--ui-radius-md);
 	padding: var(--ui-space-2) var(--ui-space-3);
 	width: 100%;
-	background: var(--ui-surface);
-}
-
-.chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--ui-space-2);
-}
-
-.chips .chip {
 	background: var(--ui-surface);
 }

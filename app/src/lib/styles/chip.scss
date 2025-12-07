@@ -1,0 +1,44 @@
+@use '$lib/styles/ui-tokens.scss' as *;
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ui-space-1);
+	border-radius: 999px;
+	border: 1px solid var(--ui-border);
+	padding: var(--ui-space-1) var(--ui-space-3);
+	font-size: var(--ui-font-sm);
+	background: var(--ui-surface);
+	color: inherit;
+	cursor: pointer;
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chip:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+.chip.selected {
+	background: var(--ui-accent-soft);
+	border-color: var(--ui-border-strong);
+	color: var(--ui-accent);
+}
+
+.chip.accent {
+	border-color: var(--ui-accent);
+	color: var(--ui-accent);
+	background: var(--ui-surface-muted);
+}
+
+.chip.danger {
+	border-color: var(--ui-warn);
+	color: var(--ui-warn);
+	background: var(--ui-warn-soft);
+}
+
+.chip.muted {
+	border-color: var(--ui-border);
+	color: var(--ui-muted);
+	background: var(--ui-surface-muted);
+}

@@ -1,0 +1,18 @@
+@use '$lib/styles/ui-tokens.scss' as *;
+
+.chip-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ui-space-1);
+}
+
+.chip-group__label {
+	font-size: var(--ui-font-sm);
+	color: var(--ui-muted);
+}
+
+.chip-group__body {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ui-space-2);
+}
