@@ -93,3 +93,20 @@ N/A (no violations anticipated)
 **Phase 3: Retrofit mapping (implementation planning only)**  
 - List target consumers (ConstraintList, DiagnosticsList, HoverInfoBar, course/solver filter bars).  
 - Note SCSS refactors: replace fixed widths/margins with tokens; remove hard-coded sizes in list layouts; align typography with Material scale.
+
+## Implementation rollout mapping
+
+| Surface / Component | Action |
+|---------------------|--------|
+| `app/src/lib/components/ConstraintList` | Replace bespoke header/filter markup with meta-template slots; feed density flag from solver settings; wire pagination footer props. |
+| `app/src/lib/components/DiagnosticsList` | Adopt shared hover template for inline diagnostics chips; ensure hover disable logic references shared helper. |
+| `app/src/lib/components/HoverInfoBar` | Swap SCSS constants for token variables; reuse shared hover panel partial to match padding/elevation. |
+| `app/src/lib/components/filters/CourseFilterBar` | Move chip groups into shared filter template; add presets/settings slot for saved filter sets. |
+| `app/src/lib/components/filters/SolverFilterBar` | Same as course filters plus solver-specific chips (priority/direction) using shared chip styles. |
+| `app/src/lib/components/pagination/FooterControls` | Expose prev/next + neighbor/jump controls and summary display per spec; consume token spacing. |
+| `app/src/lib/components/diagnostics/ConflictList` | Guarantee stacked layout guardrails trigger (no font shrinking) by delegating layout to meta-template. |
+
+SCSS refactor checklist:
+- Move shared tokens into `app/src/lib/theme/tokens.scss` and provide `.tokens.css` import for runtime overrides.
+- Delete fixed pixel widths/heights from list containers; use provided clamps/density mixins.
+- Audit chip styles for solver/course filter bars so they only reference `--ui-chip-*` tokens; remove duplicated border/color definitions.

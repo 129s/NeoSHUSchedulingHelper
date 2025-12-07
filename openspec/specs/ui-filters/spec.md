@@ -22,6 +22,17 @@ UI filters MUST expose options to include/exclude special course types (at minim
 - **WHEN** sports courses are present
 - **THEN** they may show a “体育”提示/标记 while the default filter state keeps all courses (no automatic sports exclusion); users opt-in to include-only or exclude sports via the specialType control.
 
+### Requirement: Shared filter bar & hover template with tokenized layout
+All filter bars MUST be rendered through the shared template: search input, chip row (type/priority/direction/status/source or list-specific chips), and an optional presets/settings slot. Hover/diagnostics panels MUST reuse the same panel surface (padding = `--ui-space-4` top/bottom, `--ui-space-3` sides; radius `--ui-radius-md`; elevation `--ui-elevation-raised`) and pull chip colors from the shared token pack. The presets slot reserves 96px minimum width and sticks to the end of the chip row; when filters collapse below 520px width the search input stacks above chips and presets.
+
+#### Scenario: Template reuse
+- **WHEN** rendering solver/course/diagnostics filters
+- **THEN** they consume the shared template: search input width `clamp(180px, 20vw, 320px)`, chips spaced by `--ui-space-2`, preset/settings slot aligned to the end, no bespoke SCSS per list.
+
+#### Scenario: Hover disable + muted display
+- **WHEN** hover panels render inside time-conflict mode or for impossible/weak-impossible courses
+- **THEN** hover is disabled and diagnostics show muted styles (chip text switches to `--ui-muted`, panel border uses `--ui-border`), matching solver rules; chip states always use the shared `--ui-chip-*` tokens.
+
 ### Requirement: Dual-mode filtering (simple vs advanced) with mutual exclusivity
 The filter UI MUST provide a simple bar and an advanced panel that are mutually exclusive: opening advanced hides/disables the simple bar, and closing advanced re-enables the simple bar.
 
@@ -115,4 +126,3 @@ The solver tab MUST present a linear flow: (1) add-intent entry, (2) solve butto
 #### Scenario: Linear solver flow
 - **WHEN** opening the solver tab
 - **THEN** the UI shows the steps in order (add → solve → hard list → soft list → failure list), each list filterable/searchable via the shared template.
-

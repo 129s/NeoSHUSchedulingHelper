@@ -33,6 +33,17 @@ Paginated views MUST render controls with adjacent page buttons and a jump-to-pa
 - **WHEN** the user enters a page number and confirms
 - **THEN** the view navigates directly to that page and renders the correct batch.
 
+### Requirement: Shared pagination footer hook in meta-template
+List templates MUST expose a footer hook that renders prev/next buttons, ±2 neighbor buttons, optional jump-to menu (first/last shortcuts or numeric input), and a summary string showing `current page / total` plus the active page size (read-only). Footer layout follows the shared token pack and wraps into two rows when width < 360px. When the global mode switches to continuous loading, the footer hides entirely (no empty padding) but the summary text moves into the list header.
+
+#### Scenario: Page-size display mirrors settings
+- **WHEN** a user changes the page size in settings
+- **THEN** the footer immediately reflects the new size (“20 / page · 130 total”) without duplicating per-list state and the summary remains visible even if the list is only one page.
+
+#### Scenario: Footer hidden in continuous mode
+- **WHEN** the list switches to continuous loading
+- **THEN** the footer hook detaches from DOM, chip spacing collapses, and only the header summary remains; there is no placeholder gap.
+
 ### Requirement: Continuous/batch loading option
 Continuous loading MUST load additional batches on demand (scroll-triggered near end of list) without losing filter state; page size still governs batch size and no manual “load more” button is required.
 
@@ -54,4 +65,3 @@ Course lists and the calendar MUST use actual dataset data and remove any demo/e
 #### Scenario: No demo sources
 - **WHEN** the UI renders course lists or calendar
 - **THEN** it loads from real courseCatalog/parsed data only, with no sample/demo fixtures.
-
