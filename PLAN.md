@@ -11,3 +11,4 @@
 | FE-LATER-1| 设计 solver tab linear flow + polish 行为           | LATER     | spec/ui        | TODO   | FE-NOW-2           | 结合 FE-NOW 成果扩展 polish spec |
 | FE-LATER-2| 为 solver tab 配置 UI review (MCP + Gemini)         | LATER     | mcp/ui-review  | DONE   | FE-NOW-3, MIG-3    | 已完成 MCP 驱动的 UI 校验流程配置 |
 | MIG-4     | 立项 `2025-shared-ui-cleanup` 并推进复用性 refactor | MIGRATION | spec/process   | TODO   | MIG-1              | proposal 已建，待审计/实现 |
+| MIG-5     | 清理模糊中文标签（2025-copy-scrub change）         | MIGRATION | spec/process   | DONE   | -                  | 搜索+移除“热门/火爆”，记录 dataset 例外 |
