@@ -1,7 +1,14 @@
 import { get } from 'svelte/store';
+import { t } from '../i18n';
 import { datasetMeta, courseCatalogMap } from '../data/catalog/courseCatalog';
 import { selectedCourseIds, wishlistCourseIds } from '../stores/courseSelection';
 import { encodeBase64, decodeBase64 } from '../data/utils/base64';
+import {
+	getStorageStateSnapshot,
+	applyStoragePreferences,
+	type StoragePreferencesSnapshot
+} from '../stores/storageState';
+import type { SelectionMatrixState } from '../data/selectionMatrix';
 
 const SCHEMA_ID = 'shu-course-selection-v1';
 
@@ -13,34 +20,51 @@ export interface SelectionSnapshot {
 	semester?: string;
 	selected: string[];
 	wishlist: string[];
+	selection?: SelectionMatrixState;
+	preferences?: StoragePreferencesSnapshot;
+}
+
+export interface SelectionSnapshotOptions {
+	selection?: SelectionMatrixState;
+	selected?: Iterable<string>;
+	wishlist?: Iterable<string>;
+	termId?: string;
+	semester?: string;
+	generatedAt?: number;
 }
 
 export interface ImportResult {
 	selectedApplied: number;
 	wishlistApplied: number;
 	ignored: string[];
+	preferencesApplied: boolean;
 }
 
-export function buildSelectionSnapshot(): SelectionSnapshot {
-	return {
+export function buildSelectionSnapshot(options: SelectionSnapshotOptions = {}): SelectionSnapshot {
+	const snapshot: SelectionSnapshot = {
 		schema: SCHEMA_ID,
 		version: 1,
-		generatedAt: Date.now(),
-		termId: datasetMeta.semester,
-		semester: datasetMeta.semester,
-		selected: Array.from(get(selectedCourseIds)),
-		wishlist: Array.from(get(wishlistCourseIds))
+		generatedAt: options.generatedAt ?? Date.now(),
+		termId: options.termId ?? datasetMeta.semester,
+		semester: options.semester ?? datasetMeta.semester,
+		selected: options.selected ? Array.from(options.selected) : Array.from(get(selectedCourseIds)),
+		wishlist: options.wishlist ? Array.from(options.wishlist) : Array.from(get(wishlistCourseIds))
 	};
+	if (options.selection) {
+		snapshot.selection = options.selection;
+	}
+	snapshot.preferences = getStorageStateSnapshot();
+	return snapshot;
 }
 
-export function encodeSelectionSnapshotBase64() {
-	const snapshot = buildSelectionSnapshot();
+export function encodeSelectionSnapshotBase64(options?: SelectionSnapshotOptions) {
+	const snapshot = buildSelectionSnapshot(options);
 	return encodeBase64(JSON.stringify(snapshot));
 }
 
 export function importSelectionSnapshotBase64(payload: string): ImportResult {
 	if (!payload?.trim()) {
-		throw new Error('请输入 base64 字符串');
+		throw new Error(t('errors.importEmpty'));
 	}
 	const decoded = decodeBase64(payload.trim());
 	const json = JSON.parse(decoded) as unknown;
@@ -67,23 +91,24 @@ export function applySelectionSnapshot(raw: unknown): ImportResult {
 	return {
 		selectedApplied: validSelected.length,
 		wishlistApplied: validWishlist.length,
-		ignored: Array.from(new Set(ignored))
+		ignored: Array.from(new Set(ignored)),
+		preferencesApplied: applyStoragePreferences(snapshot.preferences)
 	};
 }
 
 function validateSnapshot(raw: unknown): SelectionSnapshot {
 	if (!raw || typeof raw !== 'object') {
-		throw new Error('快照格式不正确');
+		throw new Error(t('errors.invalidFormat'));
 	}
 	const snapshot = raw as Partial<SelectionSnapshot>;
 	if (snapshot.schema !== SCHEMA_ID) {
-		throw new Error('不支持的快照 schema');
+		throw new Error(t('errors.unsupportedSchema'));
 	}
 	if (typeof snapshot.version !== 'number') {
-		throw new Error('缺少快照版本号');
+		throw new Error(t('errors.missingVersion'));
 	}
 	if (!Array.isArray(snapshot.selected) || !Array.isArray(snapshot.wishlist)) {
-		throw new Error('快照缺少 selected / wishlist 数组');
+		throw new Error(t('errors.missingData'));
 	}
 	return snapshot as SelectionSnapshot;
 }

@@ -1,5 +1,7 @@
 <script lang="ts">
-	import HoverInfoBar from '$lib/components/HoverInfoBar.svelte';
+import HoverInfoBar from '$lib/components/HoverInfoBar.svelte';
+import { translator } from '$lib/i18n';
+import '$lib/styles/panels/course-calendar-panel.scss';
 	import {
 		weekdays,
 		periods,
@@ -16,17 +18,20 @@
 		handleEntryHover,
 		handleEntryLeave
 	} from './CourseCalendarPanel.state';
+
+	let t = (key: string) => key;
+	$: t = $translator;
 </script>
 
 <section class="calendar-panel">
 	<header>
 		<div>
-			<h3>课程表</h3>
-			<p>传统课表样式，左侧为时间，横向按周一至周五排列。</p>
+			<h3>{t('calendar.title')}</h3>
+			<p>{t('calendar.description')}</p>
 		</div>
 	</header>
 
-	<div class="calendar-table" style={$tableStyle} aria-label="课程时间表">
+	<div class="calendar-table" style={$tableStyle} aria-label={t('calendar.title')}>
 		<div class="corner"></div>
 		{#each $weekdays as dayLabel, dayIndex}
 			<div class="table-header" style={`grid-column:${dayIndex + 2};`}>{dayLabel}</div>
@@ -34,7 +39,7 @@
 
 		{#each periods as period, rowIndex}
 			<div class="time-cell" style={`grid-row:${rowIndex + 2};`}>
-				<strong>{(period as any).label ?? `第${rowIndex + 1}节`}</strong>
+				<strong>{(period as any).label ?? `${t('calendar.slotPrefix')}${rowIndex + 1}${t('calendar.slotSuffix')}`}</strong>
 				<span>{period.start ?? '??'} - {period.end ?? '??'}</span>
 			</div>
 			{#each $weekdays as _, dayIndex}
@@ -49,12 +54,14 @@
 			{/each}
 		{/each}
 
-		{#each $visibleEntries as entry (entry.key)}
+		{#each $visibleEntries as entry, index (entry.key)}
 			{@const hasClipPath = getClipPath(entry) !== 'none'}
+			{@const isHighlighted = $activeId === entry.id}
+			{@const showLabel = shouldShowLabel(entry)}
 			{@const blockClass = [
 				'course-block',
-				shouldShowLabel(entry) ? 'labelled' : 'compact',
-				$activeId === entry.id ? 'active' : '',
+				showLabel ? 'labelled' : 'compact',
+				isHighlighted ? 'active highlighted' : '',
 				getSpanClass(entry),
 				getParityClass(entry),
 				hasClipPath ? 'with-clip' : '',
@@ -72,10 +79,14 @@
 				on:blur={handleEntryLeave}
 				aria-label={`${entry.title} ${entry.location}`}
 			>
-				{#if shouldShowLabel(entry)}
+				{#if showLabel}
 					<div class="course-text">
 						<strong>{entry.title}</strong>
 						<small>{entry.location}</small>
+					</div>
+				{:else if hasClipPath}
+					<div class="course-indicator" aria-hidden="true">
+						{String.fromCharCode(9312 + (index % 20))}
 					</div>
 				{/if}
 			</button>
@@ -84,7 +95,3 @@
 
 	<HoverInfoBar />
 </section>
-
-<style lang="scss">
-	@use "$lib/styles/apps/CourseCalendarPanel.styles.scss" as *;
-</style>

@@ -1,11 +1,15 @@
 <script lang="ts">
- import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
- import CourseCard from '$lib/components/CourseCard.svelte';
- import SelectionModePrompt from '$lib/components/SelectionModePrompt.svelte';
- import { crossCampusAllowed, selectionModeNeedsPrompt } from '$lib/stores/coursePreferences';
- import { filterOptions } from '$lib/stores/courseFilters';
- import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
- import { groupCoursesByName } from '$lib/utils/courseHelpers';
+import ListSurface from '$lib/components/ListSurface.svelte';
+import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
+import CourseCard from '$lib/components/CourseCard.svelte';
+import SelectionModePrompt from '$lib/components/SelectionModePrompt.svelte';
+import PaginationFooter from '$lib/components/PaginationFooter.svelte';
+import { crossCampusAllowed, selectionModeNeedsPrompt } from '$lib/stores/coursePreferences';
+import { filterOptions } from '$lib/stores/courseFilters';
+import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
+import { groupCoursesByName } from '$lib/utils/courseHelpers';
+import { translator } from '$lib/i18n';
+import '$lib/styles/panels/all-courses-panel.scss';
 import {
 	collapseByName,
 	filteredCourses,
@@ -26,10 +30,22 @@ import {
 	toggleIntentSelection,
 	setIntentSelection
 	} from './AllCoursesPanel.state';
+import type { WishlistActionState } from './AllCoursesPanel.state';
 import { intentSelection } from '$lib/stores/intentSelection';
 
 let showModePrompt = false;
 $: showModePrompt = $selectionModeNeedsPrompt;
+
+let t = (key: string) => key;
+$: t = $translator;
+
+const formatVariantCount = (count: number) =>
+	t('panels.allCourses.variantCountLabel').replace('{count}', String(count));
+
+const resolveStateLabel = (state: WishlistActionState) =>
+	t(`panels.allCourses.stateLabels.${state}`);
+$: includeShort = t('courseCard.includeShort');
+$: excludeShort = t('courseCard.excludeShort');
 
 let currentPage = 1;
 let loadedCount = 0;
@@ -81,27 +97,22 @@ $: if ($paginationMode !== lastMode) {
 	}
  }
 
- $: neighborRange = (() => {
-	const count = Math.max(1, $pageNeighbors);
-	const start = Math.max(1, currentPage - count);
-	const end = Math.min(totalPages, currentPage + count);
-	return { start, end };
- })();
 </script>
 
-<section class="panel">
-	<header>
-		<div>
-			<h3>全部课程</h3>
-			<p>展示所有候选课程，可快速加入待选。</p>
-		</div>
-	</header>
-	<CourseFiltersToolbar {filters} options={filterOptions} />
+<ListSurface
+	title={t('panels.allCourses.title')}
+	subtitle={t('panels.allCourses.description')}
+	count={totalItems}
+	density="comfortable"
+>
+	<svelte:fragment slot="filters">
+		<CourseFiltersToolbar {filters} options={filterOptions} />
+	</svelte:fragment>
 
 	<div class="course-list" bind:this={listEl} on:scroll={handleScroll}>
 		{#if $collapseByName}
 			{#if grouped.length === 0}
-				<p class="empty">暂无课程</p>
+				<p class="empty">{t('panels.allCourses.empty')}</p>
 			{:else}
 				{#each grouped as [groupKey, courses], groupIndex (groupKey)}
 					{@const primary = courses[0]}
@@ -109,7 +120,7 @@ $: if ($paginationMode !== lastMode) {
 						<button type="button" class="group-header" on:click={() => toggleGroup(groupKey)}>
 							<div class="group-info">
 								<strong>{groupKey}</strong>
-									<small>{primary?.slot ?? '暂无时间'} · {courses.length} 个班次</small>
+									<small>{primary?.slot ?? t('courseCard.noTime')} · {formatVariantCount(courses.length)}</small>
 								</div>
 								<span aria-hidden="true">{$expandedGroups.has(groupKey) ? '▲' : '▼'}</span>
 							</button>
@@ -118,7 +129,7 @@ $: if ($paginationMode !== lastMode) {
 									type="button"
 									on:click={() => ($wishlistSet.has(courses[0].id) ? removeGroupFromWishlist(courses, $wishlistSet) : addGroupToWishlist(courses, $wishlistSet))}
 								>
-									{$wishlistSet.has(courses[0].id) ? '取消待选' : '加入待选'}
+									{$wishlistSet.has(courses[0].id) ? t('panels.allCourses.removeGroup') : t('panels.allCourses.addGroup')}
 								</button>
 							</div>
 							{#if $expandedGroups.has(groupKey)}
@@ -126,12 +137,13 @@ $: if ($paginationMode !== lastMode) {
 									{#each courses as course, variantIndex (course.id)}
 										{@const inWishlist = $wishlistSet.has(course.id)}
 										{@const inSelected = $selectedSet.has(course.id)}
+										{@const actionState = computeStateLabel(inWishlist, inSelected)}
 										<CourseCard
 						id={course.id}
 						title={course.title}
 						teacher={course.teacher}
 						teacherId={course.teacherId}
-						time={course.slot ?? '暂无时间'}
+						time={course.slot ?? t('courseCard.noTime')}
 						campus={course.campus}
 						status={course.status}
 						crossCampusEnabled={$crossCampusAllowed}
@@ -159,16 +171,20 @@ $: if ($paginationMode !== lastMode) {
 													disabled={inWishlist && !inSelected}
 												>
 													{#if inSelected}
-														重选
+														{t('panels.selected.reselect')}
 													{:else if inWishlist}
-														取消待选
+														{t('panels.allCourses.removeGroup')}
 													{:else}
-														{computeStateLabel(inWishlist, inSelected)}
+														{resolveStateLabel(actionState)}
 													{/if}
 												</button>
 												<div class="intent-actions">
-													<button type="button" on:click={() => setIntentSelection(course.id, 'include')}>必</button>
-													<button type="button" on:click={() => setIntentSelection(course.id, 'exclude')}>不选</button>
+													<button type="button" on:click={() => setIntentSelection(course.id, 'include')}>
+														{includeShort}
+													</button>
+													<button type="button" on:click={() => setIntentSelection(course.id, 'exclude')}>
+														{excludeShort}
+													</button>
 												</div>
 											</div>
 										</CourseCard>
@@ -180,7 +196,7 @@ $: if ($paginationMode !== lastMode) {
 			{/if}
 		{:else}
 			{#if visibleCourses.length === 0}
-				<p class="empty">暂无课程</p>
+				<p class="empty">{t('panels.allCourses.empty')}</p>
 			{:else}
 				{#each visibleCourses as course, index (course.id)}
 					{@const inWishlist = $wishlistSet.has(course.id)}
@@ -190,7 +206,7 @@ $: if ($paginationMode !== lastMode) {
 					title={course.title}
 					teacher={course.teacher}
 					teacherId={course.teacherId}
-					time={course.slot ?? '暂无时间'}
+					time={course.slot ?? t('courseCard.noTime')}
 					campus={course.campus}
 					status={course.status}
 					crossCampusEnabled={$crossCampusAllowed}
@@ -206,29 +222,33 @@ $: if ($paginationMode !== lastMode) {
 					onToggleSelect={() => toggleIntentSelection(course.id)}
 				>
 						<div slot="actions" class="actions-slot">
-							<button
-								type="button"
-								class="action-btn"
-								on:click={() =>
-									inSelected
-										? reselectCourseFromList(course.id)
-										: inWishlist
-											? removeGroupFromWishlist([course], $wishlistSet)
-											: addCourse(course.id, inWishlist, inSelected)}
-								disabled={inWishlist && !inSelected}
-							>
-								{#if inSelected}
-									重选
-								{:else if inWishlist}
-									取消待选
-								{:else}
-									{computeStateLabel(inWishlist, inSelected)}
-								{/if}
-							</button>
-							<div class="intent-actions">
-								<button type="button" on:click={() => setIntentSelection(course.id, 'include')}>必</button>
-								<button type="button" on:click={() => setIntentSelection(course.id, 'exclude')}>不选</button>
-							</div>
+								<button
+									type="button"
+									class="action-btn"
+									on:click={() =>
+										inSelected
+											? reselectCourseFromList(course.id)
+											: inWishlist
+												? removeGroupFromWishlist([course], $wishlistSet)
+												: addCourse(course.id, inWishlist, inSelected)}
+									disabled={inWishlist && !inSelected}
+								>
+									{#if inSelected}
+										{t('panels.selected.reselect')}
+									{:else if inWishlist}
+										{t('panels.allCourses.removeGroup')}
+									{:else}
+										{resolveStateLabel(computeStateLabel(inWishlist, inSelected))}
+									{/if}
+								</button>
+								<div class="intent-actions">
+									<button type="button" on:click={() => setIntentSelection(course.id, 'include')}>
+										{includeShort}
+									</button>
+									<button type="button" on:click={() => setIntentSelection(course.id, 'exclude')}>
+										{excludeShort}
+									</button>
+								</div>
 						</div>
 					</CourseCard>
 				{/each}
@@ -236,47 +256,16 @@ $: if ($paginationMode !== lastMode) {
 		{/if}
 	</div>
 
-	{#if $paginationMode === 'paged' && totalPages > 1}
-		<div class="pager">
-			<button type="button" on:click={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1}>上一页</button>
-			{#each Array.from({ length: neighborRange.end - neighborRange.start + 1 }, (_, i) => neighborRange.start + i) as page}
-				<button type="button" class:active={page === currentPage} on:click={() => handlePageChange(page)}>
-					{page}
-				</button>
-			{/each}
-			<button type="button" on:click={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages}>下一页</button>
-			<label class="jump">
-				<span>跳转</span>
-				<input
-					type="number"
-					min="1"
-					max={totalPages}
-					value={currentPage}
-					on:change={(e) => handlePageChange(Number((e.currentTarget as HTMLInputElement).value))}
-				/>
-			</label>
-			<span class="total">共 {totalPages} 页</span>
-		</div>
-	{/if}
-</section>
+	<svelte:fragment slot="footer">
+		{#if $paginationMode === 'paged' && totalPages > 1}
+			<PaginationFooter
+				currentPage={currentPage}
+				totalPages={totalPages}
+				pageNeighbors={$pageNeighbors}
+				onPageChange={handlePageChange}
+			/>
+		{/if}
+	</svelte:fragment>
+</ListSurface>
 
 <SelectionModePrompt open={showModePrompt} onClose={() => (showModePrompt = false)} />
-
-<style lang="scss">
-	@use "$lib/styles/apps/AllCoursesPanel.styles.scss" as *;
-
-	.intent-actions {
-		display: inline-flex;
-		gap: 0.25rem;
-		margin-left: 0.35rem;
-	}
-
-	.intent-actions button {
-		border: 1px solid rgba(15, 18, 35, 0.12);
-		border-radius: 6px;
-		background: #fff;
-		font-size: 0.8rem;
-		padding: 0.2rem 0.45rem;
-		cursor: pointer;
-	}
-</style>

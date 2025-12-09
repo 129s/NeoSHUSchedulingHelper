@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { CourseCatalogEntry } from '../data/catalog/courseCatalog';
 import { courseCatalogMap } from '../data/catalog/courseCatalog';
 import type { CourseFilterState } from '../stores/courseFilters';
@@ -60,7 +61,7 @@ export function applyCourseFilters(
 			courseMeta.conflictTargets = hardTargets;
 			courseMeta.diagnostics.push({
 				label: 'conflic',
-				reason: `硬冲突：${hardTargets.join('、')}`
+				reason: t('conflict.hardConflict').replace('{targets}', hardTargets.join('、'))
 			});
 			courseMeta.diagnostics.push({ label: 'impossible' });
 		} else {
@@ -70,7 +71,7 @@ export function applyCourseFilters(
 				courseMeta.conflictTargets = overlaps;
 				courseMeta.diagnostics.push({
 					label: 'conflic',
-					reason: `时间冲突：${overlaps.join('、')}`
+					reason: t('conflict.timeConflict').replace('{overlaps}', overlaps.join('、'))
 				});
 			}
 		}
@@ -80,7 +81,7 @@ export function applyCourseFilters(
 		if (!matchSimple(course.campus, state.campus)) continue;
 		if (!matchSimple(course.college ?? '', state.college)) continue;
 		if (!matchSimple(course.major ?? '', state.major)) continue;
-		if (!matchTeachingLanguage(course.teachingLanguage ?? '未指定', state.teachingLanguage)) continue;
+		if (!matchTeachingLanguage(course.teachingLanguage ?? t('config.teachingLanguages.unspecified'), state.teachingLanguage)) continue;
 		if (!matchTeachingMode(course.teachingMode ?? '', course.selectionNote ?? '', state.teachingMode, state.teachingModeOther, state.matchCase)) continue;
 		if (!matchSpecial(course.specialType ?? [], state.specialFilter)) continue;
 		if (!matchWeekFilters(course.weekParity, course.weekSpan, state.weekParityFilter, state.weekSpanFilter)) continue;
@@ -105,8 +106,8 @@ function matchConflictMode(meta: CourseFilterMeta, mode: ConflictFilterMode) {
 	if (mode === 'any') return true;
 	const labels = meta.diagnostics.map((d) => d.label);
 	if (mode === 'no-conflict') return labels.length === 0;
-	if (mode === 'no-conflic') return !labels.includes('conflic');
-	if (mode === 'no-weak-impossible') return !labels.includes('weak-impossible');
+	if (mode === 'no-time-conflict') return !labels.includes('conflic');
+	if (mode === 'no-hard-conflict') return !labels.includes('weak-impossible');
 	if (mode === 'no-impossible') return !labels.includes('impossible');
 	return true;
 }
@@ -187,15 +188,15 @@ function matchWeekFilters(
 ) {
 	const parityOk =
 		parityFilter === 'any' ||
-		(parityFilter === 'odd' && parity === '单周') ||
-		(parityFilter === 'even' && parity === '双周') ||
-		(parityFilter === 'all' && parity === '全部周');
+		(parityFilter === 'odd' && parity === t('config.weekParity.odd')) ||
+		(parityFilter === 'even' && parity === t('config.weekParity.even')) ||
+		(parityFilter === 'all' && parity === t('config.weekParity.all'));
 	if (!parityOk) return false;
 	const spanOk =
 		spanFilter === 'any' ||
-		(spanFilter === 'upper' && span === '上半学期') ||
-		(spanFilter === 'lower' && span === '下半学期') ||
-		(spanFilter === 'full' && span === '全学期');
+		(spanFilter === 'upper' && span === t('config.weekSpan.upper')) ||
+		(spanFilter === 'lower' && span === t('config.weekSpan.lower')) ||
+		(spanFilter === 'full' && span === t('config.weekSpan.full'));
 	return spanOk;
 }
 

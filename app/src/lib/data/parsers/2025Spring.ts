@@ -31,7 +31,7 @@ const CAMPUS_MAP: Record<string, CampusTag> = {
 };
 
 const WEEKDAY_MAP: Record<string, number> = { 一: 0, 二: 1, 三: 2, 四: 3, 五: 4, 六: 5, 日: 6, 天: 6, 末: 6 };
-const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 export const parser2025Spring: CourseParser = {
 	id: '2025Spring',
 	termNames: ['2025-2026 春', '2025 Spring'],
@@ -39,7 +39,7 @@ export const parser2025Spring: CourseParser = {
 	parse(raw: RawCourseSnapshot, overrides: RawOverrideRecord[] = []) {
 		const stats = analyzeCourses(raw.courses);
 		const baseCalendar: CalendarConfig = {
-			weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+			weekdays: ['周一', '周二', '周三', '周四', '周五', '周六'],
 			periods: resolveTermPeriods(raw.termName),
 			timezone: 'Asia/Shanghai'
 		};

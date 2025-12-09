@@ -64,11 +64,13 @@ export function handleHover(course: CourseCatalogEntry) {
 		weekSpan: course.weekSpan,
 		weekParity: course.weekParity,
 		source: 'list',
-		extra: {
-			教师: course.teacher,
-			学分: course.credit,
-			校区: course.campus
-		}
+		extra: [
+			...(course.teacher ? [{ labelKey: 'hover.extra.teacher', value: course.teacher }] : []),
+			...(course.credit !== undefined
+				? [{ labelKey: 'hover.extra.credit', value: course.credit }]
+				: []),
+			...(course.campus ? [{ labelKey: 'hover.extra.campus', value: course.campus }] : [])
+		]
 	});
 }
 
@@ -112,10 +114,12 @@ export function removeGroupFromWishlist(courses: CourseCatalogEntry[], wishlist:
 	});
 }
 
-export function computeStateLabel(wishlistHas: boolean, selectedHas: boolean) {
-	if (selectedHas) return '已选';
-	if (wishlistHas) return '已在待选';
-	return '加入待选';
+export type WishlistActionState = 'selected' | 'wishlist' | 'add';
+
+export function computeStateLabel(wishlistHas: boolean, selectedHas: boolean): WishlistActionState {
+	if (selectedHas) return 'selected';
+	if (wishlistHas) return 'wishlist';
+	return 'add';
 }
 
 export function toggleIntentSelection(id: string) {

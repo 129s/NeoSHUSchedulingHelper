@@ -1,7 +1,7 @@
 <script context="module" lang="ts">
 	export type DiagnosticItem = {
 		id: string;
-		label: string; // e.g. 可行/可调冲突/不可调冲突/硬违/软违
+	label: string; // e.g. feasible/fixable conflict/non-fixable conflict/hard/soft
 		reason: string;
 		type?: 'course' | 'time' | 'group' | 'soft';
 		meta?: string;
@@ -10,18 +10,27 @@
 
 <script lang="ts">
 	import ListSurface from '$lib/components/ListSurface.svelte';
+	import { translator } from '$lib/i18n';
+	import '$lib/styles/diagnostics-list.scss';
 
-	export let title = '无解';
+	export let title: string | null = null;
 	export let subtitle: string | null = null;
-	export let emptyLabel = '暂无诊断信息';
+	export let emptyLabel: string | null = null;
 	export let items: DiagnosticItem[] = [];
 	export let hoverDisabled = false;
+
+	let t = (key: string) => key;
+	let resolvedTitle = '';
+	let resolvedEmptyLabel = '';
+	$: t = $translator;
+	$: resolvedTitle = title ?? t('diagnostics.defaultTitle');
+	$: resolvedEmptyLabel = emptyLabel ?? t('diagnostics.emptyLabel');
 </script>
 
 <div aria-live="polite">
-	<ListSurface title={title} subtitle={subtitle} count={items.length} density="compact">
+	<ListSurface title={resolvedTitle} subtitle={subtitle} count={items.length} density="compact">
 		{#if !items.length}
-			<p class="muted diagnostics-empty">{emptyLabel}</p>
+			<p class="muted diagnostics-empty">{resolvedEmptyLabel}</p>
 		{:else}
 			<ul class="diagnostics-items">
 				{#each items as item (item.id)}
@@ -38,5 +47,3 @@
 		{/if}
 	</ListSurface>
 </div>
-
-<style src="$lib/styles/diagnostics-list.scss" lang="scss"></style>

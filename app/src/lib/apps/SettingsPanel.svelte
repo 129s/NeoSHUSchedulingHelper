@@ -18,121 +18,113 @@
 		setPageNeighbors,
 		toggleWeekends
 	} from './SettingsPanel.state';
+	import { translator } from '$lib/i18n';
+	import { locale, type LocaleId } from '$lib/stores/localePreference';
+	import ListSurface from '$lib/components/ListSurface.svelte';
+	import '$lib/styles/panels/settings-panel.scss';
+
+	let t = (key: string) => key;
+	$: t = $translator;
+	$: currentLocale = $locale;
+
+	function handleLocaleChange(event: Event) {
+		const next = (event.currentTarget as HTMLSelectElement).value as LocaleId;
+		locale.set(next);
+	}
 </script>
 
-<section class="panel">
-	<header>
-		<h3>界面设置</h3>
-		<p>切换 Dock 主题 / 全局配置。</p>
-	</header>
+<ListSurface
+	title={t('settings.title')}
+	subtitle={t('settings.subtitle')}
+	density="comfortable"
+>
 	<label>
-		主题
+		{t('settings.theme')}
 		<select bind:value={$selectedTheme} on:change={handleThemeChange}>
 			{#each availableThemes as theme}
 				<option value={theme.id}>{theme.label}</option>
 			{/each}
 		</select>
 	</label>
+	<label>
+		{t('settings.languageLabel')}
+		<p>{t('settings.languageDesc')}</p>
+		<select value={currentLocale} on:change={handleLocaleChange}>
+			<option value="zh-CN">{t('settings.languageOptions.zh')}</option>
+			<option value="en-US">{t('settings.languageOptions.en')}</option>
+		</select>
+	</label>
 	<div class="toggle-row">
 		<div>
-			<div class="toggle-label">课程折叠视图</div>
-			<p>控制“全部课程”类面板是否按课程名折叠显示。</p>
+			<div class="toggle-label">{t('settings.collapseLabel')}</div>
+			<p>{t('settings.collapseDesc')}</p>
 		</div>
-		<button
-			type="button"
-			class:active={$collapseCoursesByName}
-			on:click={toggleCollapseSetting}
-		>
-			{$collapseCoursesByName ? '按课程折叠' : '逐条显示'}
+		<button type="button" class:active={$collapseCoursesByName} on:click={toggleCollapseSetting}>
+			{$collapseCoursesByName ? t('settings.collapseOn') : t('settings.collapseOff')}
 		</button>
 	</div>
 	<div class="toggle-row">
 		<div>
-			<div class="toggle-label">允许跨校区</div>
-			<p>开启后课程卡片将显示校区信息。</p>
+			<div class="toggle-label">{t('settings.crossCampusLabel')}</div>
+			<p>{t('settings.crossCampusDesc')}</p>
 		</div>
-		<button
-			type="button"
-			class:active={$crossCampusAllowed}
-			on:click={toggleCrossCampus}
-		>
-			{$crossCampusAllowed ? '显示校区' : '隐藏校区'}
+		<button type="button" class:active={$crossCampusAllowed} on:click={toggleCrossCampus}>
+			{$crossCampusAllowed ? t('settings.crossCampusOn') : t('settings.crossCampusOff')}
 		</button>
 	</div>
 	<div class="mode-row">
 		<div>
-			<div class="toggle-label">选课模式（本学期）</div>
-			<p>可超额 / 拼手速选择，可随时修改。</p>
+			<div class="toggle-label">{t('settings.modeLabel')}</div>
+			<p>{t('settings.modeDesc')}</p>
 		</div>
 		<div class="mode-buttons">
 			<button
 				type="button"
-				class:active={$selectionMode === 'overbook'}
-				on:click={() => setSelectionModeSetting('overbook')}
+				class:active={$selectionMode === 'allowOverflowMode'}
+				on:click={() => setSelectionModeSetting('allowOverflowMode')}
 			>
-				可超额
+				{t('settings.allowOverflowMode')}
 			</button>
 			<button
 				type="button"
-				class:active={$selectionMode === 'speed'}
-				on:click={() => setSelectionModeSetting('speed')}
+				class:active={$selectionMode === 'overflowSpeedRaceMode'}
+				on:click={() => setSelectionModeSetting('overflowSpeedRaceMode')}
 			>
-				拼手速
+				{t('settings.overflowSpeedRaceMode')}
 			</button>
 		</div>
 	</div>
 	<div class="toggle-row">
 		<div>
-			<div class="toggle-label">分页模式</div>
-			<p>选择分页或连续滚动，应用于全部课程列表。</p>
+			<div class="toggle-label">{t('settings.paginationLabel')}</div>
+			<p>{t('settings.paginationDesc')}</p>
 		</div>
 		<div class="mode-buttons">
-			<button
-				type="button"
-				class:active={$paginationMode === 'paged'}
-				on:click={() => setPaginationMode('paged')}
-			>
-				分页
+			<button type="button" class:active={$paginationMode === 'paged'} on:click={() => setPaginationMode('paged')}>
+				{t('settings.paged')}
 			</button>
-			<button
-				type="button"
-				class:active={$paginationMode === 'continuous'}
-				on:click={() => setPaginationMode('continuous')}
-			>
-				连续
+			<button type="button" class:active={$paginationMode === 'continuous'} on:click={() => setPaginationMode('continuous')}>
+				{t('settings.continuous')}
 			</button>
 		</div>
 	</div>
 	<div class="input-row">
 		<label>
-			<span>页大小</span>
+			<span>{t('settings.pageSize')}</span>
 			<input type="number" min="1" value={$pageSize} on:change={(e) => setPageSize(Number((e.currentTarget as HTMLInputElement).value))} />
 		</label>
 		<label>
-			<span>邻近页数</span>
-			<input
-				type="number"
-				min="1"
-				value={$pageNeighbors}
-				on:change={(e) => setPageNeighbors(Number((e.currentTarget as HTMLInputElement).value))}
-			/>
+			<span>{t('settings.pageNeighbors')}</span>
+			<input type="number" min="1" value={$pageNeighbors} on:change={(e) => setPageNeighbors(Number((e.currentTarget as HTMLInputElement).value))} />
 		</label>
 	</div>
 	<div class="toggle-row">
 		<div>
-			<div class="toggle-label">日历显示周末</div>
-			<p>默认隐藏周六日，如有周末课程或需展示可开启。</p>
+			<div class="toggle-label">{t('settings.weekendLabel')}</div>
+			<p>{t('settings.weekendDesc')}</p>
 		</div>
-		<button
-			type="button"
-			class:active={$showWeekends}
-			on:click={toggleWeekends}
-		>
-			{$showWeekends ? '显示周末' : '隐藏周末'}
+		<button type="button" class:active={$showWeekends} on:click={toggleWeekends}>
+			{$showWeekends ? t('settings.weekendOn') : t('settings.weekendOff')}
 		</button>
 	</div>
-</section>
-
-<style lang="scss">
-	@use "$lib/styles/apps/SettingsPanel.styles.scss" as *;
-</style>
+</ListSurface>

@@ -16,6 +16,9 @@
 
 <script lang="ts">
 	import ListSurface from '$lib/components/ListSurface.svelte';
+	import { dictionary as dictionaryStore, translator } from '$lib/i18n';
+	import type { Dictionary } from '$lib/i18n';
+	import '$lib/styles/constraint-list.scss';
 
 	export let title: string;
 	export let items: ConstraintItem[] = [];
@@ -26,7 +29,7 @@
 	export let onPrimaryAction: (() => void) | undefined = undefined;
 	export let onSecondaryAction: (() => void) | undefined = undefined;
 	export let convertibleKinds: Array<ConstraintItem['kind']> | null = null;
-	export let searchPlaceholder = '搜索约束';
+	export let searchPlaceholder: string | undefined = undefined;
 
 	let query = '';
 	let filterVersion = 0;
@@ -37,63 +40,94 @@
 	const statusFilters = new Set<string>();
 	const sourceFilters = new Set<string>();
 
-	const filterGroups: Array<{
+	const defaultConstraintTypeLabels = {
+		group: 'Group',
+		section: 'Section',
+		time: 'Time',
+		course: 'Course',
+		teacher: 'Teacher',
+		custom: 'Custom'
+	};
+
+	type ConstraintTypeKey = keyof typeof defaultConstraintTypeLabels;
+	const constraintTypeOrder: ConstraintTypeKey[] = ['group', 'section', 'time', 'course', 'teacher', 'custom'];
+
+let t = (key: string) => key;
+let dict: Dictionary | null = null;
+	let resolvedSearchPlaceholder = 'Search constraints';
+	let constraintTypeLabels = defaultConstraintTypeLabels;
+	let filterGroups: Array<{
 		key: 'type' | 'priority' | 'direction' | 'status' | 'source';
 		label: string;
 		options: Array<{ label: string; value: string }>;
 		set: Set<string>;
-	}> = [
+	}> = [];
+
+$: t = $translator;
+$: dict = $dictionaryStore as Dictionary;
+	$: resolvedSearchPlaceholder = searchPlaceholder ?? t('panels.solver.searchConstraints');
+	$: constraintTypeLabels = dict?.panels.solver.constraintTypeLabels ?? defaultConstraintTypeLabels;
+	$: filterGroups = [
 		{
 			key: 'type',
-			label: '类型',
-			options: [
-				{ label: '组', value: 'group' },
-				{ label: '班次', value: 'section' },
-				{ label: '时间', value: 'time' },
-				{ label: '课程', value: 'course' },
-				{ label: '教师', value: 'teacher' },
-				{ label: '自定义', value: 'custom' }
-			],
+			label: t('panels.solver.constraintType'),
+			options: constraintTypeOrder.map((value) => ({
+				value,
+				label: constraintTypeLabels[value]
+			})),
 			set: typeFilters
 		},
 		{
 			key: 'priority',
-			label: '优先级',
+			label: t('panels.solver.constraintPriority'),
 			options: [
-				{ label: '硬', value: 'hard' },
-				{ label: '软', value: 'soft' }
+				{ label: t('dropdowns.hard'), value: 'hard' },
+				{ label: t('dropdowns.soft'), value: 'soft' }
 			],
 			set: priorityFilters
 		},
 		{
 			key: 'direction',
-			label: '方向',
+			label: t('panels.solver.constraintDirection'),
 			options: [
-				{ label: '包含', value: 'include' },
-				{ label: '排除', value: 'exclude' }
+				{ label: t('dropdowns.include'), value: 'include' },
+				{ label: t('dropdowns.exclude'), value: 'exclude' }
 			],
 			set: directionFilters
 		},
 		{
 			key: 'status',
-			label: '状态',
+			label: t('panels.solver.constraintStatus'),
 			options: [
-				{ label: '启用', value: 'enabled' },
-				{ label: '禁用', value: 'disabled' }
+				{ label: t('dropdowns.enabled'), value: 'enabled' },
+				{ label: t('dropdowns.disabled'), value: 'disabled' }
 			],
 			set: statusFilters
 		},
 		{
 			key: 'source',
-			label: '来源',
+			label: t('panels.solver.constraintSource'),
 			options: [
-				{ label: '列表按钮', value: 'list' },
-				{ label: '求解器', value: 'solver' },
-				{ label: '导入', value: 'imported' }
+				{ label: t('dropdowns.listSource'), value: 'list' },
+				{ label: t('dropdowns.solverSource'), value: 'solver' },
+				{ label: t('dropdowns.importSource'), value: 'imported' }
 			],
 			set: sourceFilters
 		}
 	];
+
+	const getTypeLabel = (type?: ConstraintItem['type']) => {
+		if (!type) return '';
+		return constraintTypeLabels[type as ConstraintTypeKey] ?? type;
+	};
+
+	const getSourceLabel = (source?: ConstraintItem['source']) => {
+		if (!source) return '';
+		if (source === 'list') return t('dropdowns.listSource');
+		if (source === 'solver') return t('dropdowns.solverSource');
+		if (source === 'imported') return t('dropdowns.importSource');
+		return source;
+	};
 
 	function toggleChip(groupKey: typeof filterGroups[number]['key'], value: string) {
 		const group = filterGroups.find((g) => g.key === groupKey);
@@ -146,7 +180,12 @@
 	</svelte:fragment>
 
 	<div slot="search" class="constraint-search">
-		<input type="search" placeholder={searchPlaceholder} bind:value={query} aria-label="搜索约束" />
+		<input
+			type="search"
+			placeholder={resolvedSearchPlaceholder}
+			bind:value={query}
+			aria-label={resolvedSearchPlaceholder}
+		/>
 	</div>
 
 	<div slot="filters" class="constraint-filters">
@@ -169,7 +208,7 @@
 	</div>
 
 	{#if !filtered.length}
-		<p class="muted constraint-empty">暂无约束</p>
+		<p class="muted constraint-empty">{t('panels.solver.constraintEmpty')}</p>
 	{:else}
 		<ul class="constraint-items">
 			{#each filtered as item (item.id)}
@@ -181,19 +220,23 @@
 						</div>
 						<div class="tags">
 							<span class={`pill ${item.priority === 'hard' ? 'hard' : 'soft'}`}>
-								{item.priority === 'hard' ? '硬' : '软'}
+								{item.priority === 'hard' ? t('dropdowns.hard') : t('dropdowns.soft')}
 							</span>
 							{#if item.direction}
-								<span class="pill secondary">{item.direction === 'include' ? '包含' : '排除'}</span>
+								<span class="pill secondary">
+									{item.direction === 'include' ? t('dropdowns.include') : t('dropdowns.exclude')}
+								</span>
 							{/if}
 							{#if item.type}
-								<span class="pill secondary">{item.type === 'group' ? '组' : item.type}</span>
+								<span class="pill secondary">{getTypeLabel(item.type)}</span>
 							{/if}
 							{#if item.status}
-								<span class="pill secondary">{item.status === 'disabled' ? '禁用' : '启用'}</span>
+								<span class="pill secondary">
+									{item.status === 'disabled' ? t('dropdowns.disabled') : t('dropdowns.enabled')}
+								</span>
 							{/if}
 							{#if item.source}
-								<span class="pill secondary">{item.source === 'list' ? '列表按钮' : item.source === 'solver' ? '求解器' : '导入'}</span>
+								<span class="pill secondary">{getSourceLabel(item.source)}</span>
 							{/if}
 							{#if item.tags}
 								{#each item.tags as tag}
@@ -201,22 +244,26 @@
 								{/each}
 							{/if}
 							{#if typeof item.weight === 'number'}
-								<span class="pill secondary">权重 {item.weight}</span>
+								<span class="pill secondary">
+									{t('panels.solver.quickWeight')} {item.weight}
+								</span>
 							{/if}
 						</div>
 					</div>
 					<div class="actions">
 						{#if onConvert && (!convertibleKinds || convertibleKinds.includes(item.kind))}
 							<button type="button" class="ghost" on:click={() => onConvert?.(item)}>
-								转为{item.priority === 'hard' ? '软' : '硬'}
+								{item.priority === 'hard'
+									? t('panels.solver.convertToSoft')
+									: t('panels.solver.convertToHard')}
 							</button>
 						{/if}
-						<button type="button" class="danger" on:click={() => onRemove(item)}>移除</button>
+						<button type="button" class="danger" on:click={() => onRemove(item)}>
+							{t('panels.solver.removeConstraint')}
+						</button>
 					</div>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 </ListSurface>
-
-<style src="$lib/styles/constraint-list.scss" lang="scss"></style>

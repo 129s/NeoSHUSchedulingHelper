@@ -12,28 +12,124 @@
 	import SyncPanel from '$lib/apps/SyncPanel.svelte';
 	import SettingsPanel from '$lib/apps/SettingsPanel.svelte';
 	import { browser } from '$app/environment';
+	import { translator } from '$lib/i18n';
+	import '$lib/styles/components/dock-workspace.scss';
 
 	let container: HTMLDivElement;
 	let layout: GoldenLayout | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let fallbackMode = false;
-	let error: string | null = null;
+	let errorDetail: string | null = null;
 
 	const componentMap = {
 		'course-calendar': CourseCalendarPanel,
-		'candidates': CandidateExplorerPanel,
-		'selected': SelectedCoursesPanel,
+		candidates: CandidateExplorerPanel,
+		selected: SelectedCoursesPanel,
 		'all-courses': AllCoursesPanel,
-		'solver': SolverPanel,
+		solver: SolverPanel,
 		'action-log': ActionLogPanel,
-		'sync': SyncPanel,
-		'settings': SettingsPanel
-	};
+		sync: SyncPanel,
+		settings: SettingsPanel
+	} as const;
+
+	type PanelType = keyof typeof componentMap;
+	type PanelTitleMap = Record<PanelType, string>;
+
+	const activeContainers = new Map<ComponentContainer, PanelType>();
+
+	let t = (key: string) => key;
+	$: t = $translator;
+	let panelTitles: PanelTitleMap = buildPanelTitles(t);
+	$: panelTitles = buildPanelTitles(t);
+
+	function buildPanelTitles(translate: (key: string) => string): PanelTitleMap {
+		return {
+			'course-calendar': translate('calendar.title'),
+			'all-courses': translate('panels.allCourses.title'),
+			candidates: translate('panels.candidates.title'),
+			selected: translate('panels.selected.title'),
+			solver: translate('panels.solver.title'),
+			'action-log': translate('panels.actionLog.title'),
+			sync: translate('panels.sync.title'),
+			settings: translate('settings.title')
+		};
+	}
+
+	function assignContainer(container: ComponentContainer, type: PanelType) {
+		activeContainers.set(container, type);
+		setContainerTitle(container, type);
+	}
+
+	function setContainerTitle(container: ComponentContainer, type: PanelType) {
+		const nextTitle = panelTitles[type];
+		if (nextTitle && container.parent) {
+			container.parent.setTitle(nextTitle);
+		}
+	}
+
+	function applyPanelTitlesToLayout(titles: PanelTitleMap) {
+		activeContainers.forEach((type, container) => {
+			const nextTitle = titles[type];
+			if (nextTitle && container.parent) {
+				container.parent.setTitle(nextTitle);
+			}
+		});
+	}
+
+	function createDefaultLayoutConfig(titles: PanelTitleMap): LayoutConfig {
+		return {
+			settings: {
+				hasHeaders: true,
+				reorderEnabled: true,
+				showMaximiseIcon: true,
+				showPopoutIcon: false
+			},
+			root: {
+				type: 'row',
+				content: [
+					{
+						type: 'stack',
+						width: 25,
+						content: [{ type: 'component', componentType: 'course-calendar', title: titles['course-calendar'] }]
+					},
+					{
+						type: 'stack',
+						width: 25,
+						content: [
+							{ type: 'component', componentType: 'all-courses', title: titles['all-courses'] },
+							{ type: 'component', componentType: 'candidates', title: titles.candidates },
+							{ type: 'component', componentType: 'selected', title: titles.selected }
+						]
+					},
+					{
+						type: 'stack',
+						width: 25,
+						content: [
+							{ type: 'component', componentType: 'solver', title: titles.solver },
+							{ type: 'component', componentType: 'action-log', title: titles['action-log'] }
+						]
+					},
+					{
+						type: 'stack',
+						width: 25,
+						content: [
+							{ type: 'component', componentType: 'sync', title: titles.sync },
+							{ type: 'component', componentType: 'settings', title: titles.settings }
+						]
+					}
+				]
+			}
+		};
+	}
+
+	$: if (layout) {
+		applyPanelTitlesToLayout(panelTitles);
+	}
 
 	onMount(async () => {
 		if (!browser || !container) {
-			error = 'Browser or container not available';
-			console.error(error);
+			errorDetail = 'Browser or container not available';
+			console.error(errorDetail);
 			return;
 		}
 
@@ -42,20 +138,21 @@
 			layout = new GoldenLayout(container);
 			console.log('GoldenLayout created successfully');
 
-			// 注册所有面板
-			Object.entries(componentMap).forEach(([componentType, Component]) => {
+			const entries = Object.entries(componentMap) as Array<[PanelType, typeof componentMap[PanelType]]>;
+			entries.forEach(([componentType, Component]) => {
 				console.log(`Registering component: ${componentType}`);
-				layout?.registerComponentFactoryFunction(componentType, (container: ComponentContainer) => {
+				layout?.registerComponentFactoryFunction(componentType, (componentContainer: ComponentContainer) => {
 					console.log(`Creating component instance: ${componentType}`);
 					try {
-						// 直接在 container.element 上创建组件
 						const component = mount(Component, {
-							target: container.element,
+							target: componentContainer.element,
 							props: {}
 						});
+						assignContainer(componentContainer, componentType);
 						console.log(`Component mounted successfully: ${componentType}`);
 
-						container.on('destroy', () => {
+						componentContainer.on('destroy', () => {
+							activeContainers.delete(componentContainer);
 							console.log(`Destroying component: ${componentType}`);
 							try {
 								void unmount(component);
@@ -65,63 +162,19 @@
 						});
 					} catch (err) {
 						console.error(`Failed to create component ${componentType}:`, err);
-						container.element.innerHTML = `<div style="padding: 1rem; color: red; font-family: monospace; font-size: 12px;">Failed: ${err instanceof Error ? err.message : String(err)}</div>`;
+						componentContainer.element.innerHTML = `<div style="padding: 1rem; color: red; font-family: monospace; font-size: 12px;">Failed: ${err instanceof Error ? err.message : String(err)}</div>`;
 					}
 				});
 			});
 
-			const config: LayoutConfig = {
-				settings: {
-					hasHeaders: true,
-					reorderEnabled: true,
-					showMaximiseIcon: true,
-					showPopoutIcon: false
-				},
-				root: {
-					type: 'row',
-					content: [
-						{
-							type: 'stack',
-							width: 25,
-							content: [
-								{ type: 'component', componentType: 'course-calendar', title: '课程表' }
-							]
-						},
-						{
-							type: 'stack',
-							width: 25,
-							content: [
-								{ type: 'component', componentType: 'all-courses', title: '全部课程' },
-								{ type: 'component', componentType: 'candidates', title: '待选课程' },
-								{ type: 'component', componentType: 'selected', title: '已选课程' }
-							]
-						},
-						{
-							type: 'stack',
-							width: 25,
-							content: [
-								{ type: 'component', componentType: 'solver', title: '求解器' },
-								{ type: 'component', componentType: 'action-log', title: '操作日志' }
-							]
-						},
-						{
-							type: 'stack',
-							width: 25,
-							content: [
-								{ type: 'component', componentType: 'sync', title: '导入/导出' },
-								{ type: 'component', componentType: 'settings', title: '设置' }
-							]
-						}
-					]
-				}
-			};
+			const config = createDefaultLayoutConfig(panelTitles);
 
 			console.log('Loading layout configuration...');
 			layout.loadLayout(config);
 			layout.setSize(container.clientWidth, container.clientHeight);
 			console.log('Layout loaded successfully');
 
-			resizeObserver = new ResizeObserver(entries => {
+			resizeObserver = new ResizeObserver((entries) => {
 				for (const entry of entries) {
 					if (entry.target === container) {
 						const { width, height } = entry.contentRect;
@@ -132,8 +185,8 @@
 			resizeObserver.observe(container);
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
-			error = `Failed to initialize GoldenLayout: ${errorMsg}`;
-			console.error(error, err);
+			errorDetail = `Failed to initialize GoldenLayout: ${errorMsg}`;
+			console.error(errorDetail, err);
 			fallbackMode = true;
 		}
 	});
@@ -144,6 +197,7 @@
 		} catch (error) {
 			console.error('Error destroying layout:', error);
 		}
+		activeContainers.clear();
 		resizeObserver?.disconnect();
 		resizeObserver = null;
 		layout = null;
@@ -151,93 +205,15 @@
 </script>
 
 <div class="dock-workspace" bind:this={container}>
-	{#if error}
+	{#if errorDetail}
 		<div class="error-message">
-			<strong>错误：{error}</strong>
-			<p>请检查浏览器控制台获取详细信息。</p>
+			<strong>{t('layout.workspace.loadErrorTitle')}</strong>
+			<p>{t('layout.workspace.loadErrorHint')}</p>
+			<p class="error-detail">{errorDetail}</p>
 		</div>
 	{:else if fallbackMode}
 		<div class="fallback-message">
-			<p>Dock 布局加载失败，请刷新页面。</p>
+			<p>{t('layout.workspace.fallbackMessage')}</p>
 		</div>
 	{/if}
 </div>
-
-<style>
-	:global(body, html, #app) {
-		height: 100%;
-		margin: 0;
-	}
-
-	.dock-workspace {
-		height: 100%;
-		width: 100%;
-		background: #f4f5fb;
-	}
-
-	.dock-workspace :global(.lm_goldenlayout),
-	.dock-workspace :global(.lm_root) {
-		height: 100%;
-		width: 100%;
-	}
-
-	.error-message {
-		padding: 2rem;
-		background: #fee;
-		border: 1px solid #f99;
-		border-radius: 0.5rem;
-		color: #c33;
-		max-width: 80%;
-	}
-
-	.error-message strong {
-		display: block;
-		font-size: 1.1rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.fallback-message {
-		padding: 2rem;
-		background: #f0f0f0;
-		border-radius: 0.5rem;
-		color: #666;
-	}
-
-	:global(.lm_goldenlayout) {
-		background: transparent;
-	}
-
-	:global(.lm_splitter) {
-		background: rgba(31, 34, 48, 0.1);
-	}
-
-	:global(.lm_header) {
-		background: #ffffff;
-		border-bottom: 1px solid rgba(31, 34, 48, 0.08);
-		border-radius: 0.5rem 0.5rem 0 0;
-		box-shadow: 0 2px 6px rgba(15, 18, 36, 0.08);
-	}
-
-	/* Keep items logically closable for drag freedom but hide the buttons visually */
-	:global(.lm_header .lm_close_tab),
-	:global(.lm_controls .lm_close) {
-		display: none;
-	}
-
-	:global(.lm_tab) {
-		background: transparent;
-		border: none;
-		color: #5a5f75;
-		font-weight: 600;
-	}
-
-	:global(.lm_tab.lm_active) {
-		color: #1f2430;
-	}
-
-	:global(.lm_content) {
-		background: #fff;
-		overflow: auto;
-		overscroll-behavior: contain;
-	}
-</style>

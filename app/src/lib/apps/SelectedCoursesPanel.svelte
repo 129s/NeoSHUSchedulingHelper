@@ -1,6 +1,10 @@
 <script lang="ts">
- import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
- import CourseCard from '$lib/components/CourseCard.svelte';
+import ListSurface from '$lib/components/ListSurface.svelte';
+import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
+import CourseCard from '$lib/components/CourseCard.svelte';
+import PaginationFooter from '$lib/components/PaginationFooter.svelte';
+import { translator } from '$lib/i18n';
+import '$lib/styles/panels/selected-courses-panel.scss';
  import { crossCampusAllowed } from '$lib/stores/coursePreferences';
  import { filterOptions } from '$lib/stores/courseFilters';
  import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
@@ -26,6 +30,9 @@ let loadedCount = 0;
 let listEl: HTMLDivElement | null = null;
 let lastMode: 'paged' | 'continuous' | null = null;
 let contentSignature = '';
+
+let t = (key: string) => key;
+$: t = $translator;
 
 $: pageSizeValue = Math.max(1, $pageSize || 1);
 $: totalItems = $selectedCourses.length;
@@ -71,47 +78,52 @@ function handleScroll(event: Event) {
 	}
 }
 
-$: neighborRange = (() => {
-	const count = Math.max(1, $pageNeighbors);
-	const start = Math.max(1, currentPage - count);
-	const end = Math.min(totalPages, currentPage + count);
-	return { start, end };
-})();
+const formatVariantCount = (count: number) =>
+	t('panels.allCourses.variantCountLabel').replace('{count}', String(count));
 
-	function describeConflict(courseId: string) {
+function describeConflict(courseId: string) {
 		const meta = $filterMeta.get(courseId);
 		if (!meta || meta.conflict === 'none') return null;
+		const divider = t('panels.common.conflictDivider');
 		if (meta.diagnostics.length) {
-			return meta.diagnostics.map((d) => (d.reason ? `${d.label}: ${d.reason}` : d.label)).join('；');
+			return meta.diagnostics
+				.map((d) => (d.reason ? `${d.label}${divider}${d.reason}` : d.label))
+				.join(t('panels.common.conflictListSeparator'));
 		}
-		const targets = meta.conflictTargets.map((id) => courseCatalogMap.get(id)?.title ?? id).join('、');
-		const prefix = meta.conflict === 'hard-conflict' ? '硬冲突' : '时间冲突';
-		return targets ? `${prefix} · ${targets}` : prefix;
+		const targets = meta.conflictTargets
+			.map((id) => courseCatalogMap.get(id)?.title ?? id)
+			.join(t('panels.common.conflictNameSeparator'));
+		const prefix =
+			meta.conflict === 'hard-conflict'
+				? t('panels.common.conflictHard')
+				: t('panels.common.conflictTime');
+		return targets ? `${prefix}${divider}${targets}` : prefix;
 	}
 </script>
 
-<section class="panel">
-	<header>
-		<div>
-			<h3>已选课程</h3>
-			<p>查看并管理已经选定的课程。</p>
-		</div>
-	</header>
-	<CourseFiltersToolbar {filters} options={filterOptions} mode="selected" />
+<ListSurface
+	title={t('panels.selected.title')}
+	subtitle={t('panels.selected.description')}
+	count={totalItems}
+	density="comfortable"
+>
+	<svelte:fragment slot="filters">
+		<CourseFiltersToolbar {filters} options={filterOptions} mode="selected" />
+	</svelte:fragment>
 
 	<div class="list-container" bind:this={listEl} on:scroll={handleScroll}>
-		{#if $collapseByName}
-			{#if grouped.length === 0}
-				<p class="empty">暂无已选课程</p>
+	{#if $collapseByName}
+		{#if grouped.length === 0}
+			<p class="empty">{t('panels.selected.empty')}</p>
 			{:else}
 				{#each grouped as [groupKey, courses], groupIndex (groupKey)}
 					{@const primary = courses[0]}
 					<div class="course-group" class:expanded={$expandedGroups.has(groupKey)}>
-						<button type="button" class="group-header" on:click={() => toggleGroup(groupKey)}>
-							<div class="group-info">
-								<strong>{groupKey}</strong>
-								<small>{primary?.slot ?? '暂无时间'} · {courses.length} 个班次</small>
-							</div>
+					<button type="button" class="group-header" on:click={() => toggleGroup(groupKey)}>
+						<div class="group-info">
+							<strong>{groupKey}</strong>
+							<small>{primary?.slot ?? t('courseCard.noTime')} · {formatVariantCount(courses.length)}</small>
+						</div>
 							<span aria-hidden="true">{$expandedGroups.has(groupKey) ? '▲' : '▼'}</span>
 						</button>
 							{#if $expandedGroups.has(groupKey)}
@@ -124,7 +136,7 @@ $: neighborRange = (() => {
 						title={course.title}
 						teacher={course.teacher}
 						teacherId={course.teacherId}
-						time={course.slot ?? '暂无时间'}
+						time={course.slot ?? t('courseCard.noTime')}
 						campus={course.campus}
 						status={course.status}
 						crossCampusEnabled={$crossCampusAllowed}
@@ -139,11 +151,11 @@ $: neighborRange = (() => {
 											<div slot="actions" class="variant-actions">
 												{#if variantTotal > 1}
 													<button type="button" class="variant-action" on:click={() => reselectCourse(course.id)}>
-														重选
+														{t('panels.selected.reselect')}
 													</button>
 												{:else}
 													<button type="button" class="variant-action danger" on:click={() => deselectCourse(course.id)}>
-														退课
+														{t('panels.selected.drop')}
 													</button>
 												{/if}
 												{#if conflict}
@@ -157,19 +169,19 @@ $: neighborRange = (() => {
 					</div>
 				{/each}
 			{/if}
-		{:else}
-			{#if visibleCourses.length === 0}
-				<p class="empty">暂无已选课程</p>
+	{:else}
+		{#if visibleCourses.length === 0}
+			<p class="empty">{t('panels.selected.empty')}</p>
 			{:else}
 				{#each visibleCourses as course, index (course.id)}
 					{@const conflict = describeConflict(course.id)}
 					{@const variantTotal = variantsCount(course.id)}
-			<CourseCard
-				id={course.id}
-				title={course.title}
-				teacher={course.teacher}
-				teacherId={course.teacherId}
-				time={course.slot ?? '暂无'}
+				<CourseCard
+					id={course.id}
+					title={course.title}
+					teacher={course.teacher}
+					teacherId={course.teacherId}
+					time={course.slot ?? t('courseCard.noTimeShort')}
 				campus={course.campus}
 				status={course.status}
 				crossCampusEnabled={$crossCampusAllowed}
@@ -183,9 +195,9 @@ $: neighborRange = (() => {
 			>
 						<div slot="actions" class="course-actions">
 							{#if variantTotal > 1}
-								<button type="button" class="action-btn" on:click={() => reselectCourse(course.id)}>重选</button>
+								<button type="button" class="action-btn" on:click={() => reselectCourse(course.id)}>{t('panels.selected.reselect')}</button>
 							{:else}
-								<button type="button" class="action-btn danger" on:click={() => deselectCourse(course.id)}>退课</button>
+								<button type="button" class="action-btn danger" on:click={() => deselectCourse(course.id)}>{t('panels.selected.drop')}</button>
 							{/if}
 							{#if conflict}
 								<span class="conflict-note" title={conflict}>{conflict}</span>
@@ -197,30 +209,14 @@ $: neighborRange = (() => {
 		{/if}
 	</div>
 
-	{#if $paginationMode === 'paged' && totalPages > 1}
-		<div class="pager">
-			<button type="button" on:click={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1}>上一页</button>
-			{#each Array.from({ length: neighborRange.end - neighborRange.start + 1 }, (_, i) => neighborRange.start + i) as page}
-				<button type="button" class:active={page === currentPage} on:click={() => handlePageChange(page)}>
-					{page}
-				</button>
-			{/each}
-			<button type="button" on:click={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages}>下一页</button>
-			<label class="jump">
-				<span>跳转</span>
-				<input
-					type="number"
-					min="1"
-					max={totalPages}
-					value={currentPage}
-					on:change={(e) => handlePageChange(Number((e.currentTarget as HTMLInputElement).value))}
-				/>
-			</label>
-			<span class="total">共 {totalPages} 页</span>
-		</div>
-	{/if}
-</section>
-
-<style lang="scss">
-	@use "$lib/styles/apps/SelectedCoursesPanel.styles.scss" as *;
-</style>
+	<svelte:fragment slot="footer">
+		{#if $paginationMode === 'paged' && totalPages > 1}
+			<PaginationFooter
+				currentPage={currentPage}
+				totalPages={totalPages}
+				pageNeighbors={$pageNeighbors}
+				onPageChange={handlePageChange}
+			/>
+		{/if}
+	</svelte:fragment>
+</ListSurface>

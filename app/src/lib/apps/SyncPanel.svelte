@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { datasetMeta } from '$lib/data/catalog/courseCatalog';
-	import { encodeSelectionSnapshotBase64, importSelectionSnapshotBase64 } from '$lib/utils/selectionPersistence';
-	import { loadStateBundle } from '$lib/data/termState';
-	import { syncStateBundle } from '$lib/data/github/stateSync';
-	import { githubToken, clearGithubToken } from '$lib/stores/githubAuth';
-	import { get } from 'svelte/store';
-	import { onMount } from 'svelte';
+import ListSurface from '$lib/components/ListSurface.svelte';
+import { datasetMeta } from '$lib/data/catalog/courseCatalog';
+import { encodeSelectionSnapshotBase64, importSelectionSnapshotBase64 } from '$lib/utils/selectionPersistence';
+import { loadStateBundle } from '$lib/data/termState';
+import { syncStateBundle } from '$lib/data/github/stateSync';
+import { githubToken, clearGithubToken } from '$lib/stores/githubAuth';
+import { get } from 'svelte/store';
+import { onMount } from 'svelte';
+import { translator } from '$lib/i18n';
+import { storageState, type StoragePreferencesSnapshot } from '$lib/stores/storageState';
+import '$lib/styles/panels/sync-panel.scss';
 
 	let exportStatus = '';
 	let importStatus = '';
@@ -16,17 +20,33 @@
 	let gistNote = '';
 	let gistPublic = false;
 	let gistStatus = '';
-	let gistBusy = false;
+let gistBusy = false;
+let storageSnapshot: StoragePreferencesSnapshot | null = null;
 
-const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
+	let t = (key: string) => key;
+	$: t = $translator;
+	$: storageSnapshot = $storageState;
+
+	const format = (key: string, values?: Record<string, string | number>) => {
+		let template = t(key);
+		if (!values) return template;
+		return Object.entries(values).reduce(
+			(acc, [placeholder, value]) => acc.replace(`{${placeholder}}`, String(value)),
+			template
+		);
+	};
+
+	const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 
 	async function generateSnapshot() {
 		try {
 			selectionBusy = true;
 			snapshotBase64 = encodeSelectionSnapshotBase64();
-			exportStatus = '已生成 Base64 快照，可复制保存或贴到 Issue/Gist。';
+			exportStatus = t('panels.sync.statuses.generated');
 		} catch (error) {
-			exportStatus = `导出失败：${error instanceof Error ? error.message : String(error)}`;
+			exportStatus = format('panels.sync.statuses.exportFailed', {
+				error: error instanceof Error ? error.message : String(error)
+			});
 		} finally {
 			selectionBusy = false;
 		}
@@ -36,27 +56,33 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 		if (!snapshotBase64) return;
 		navigator.clipboard?.writeText(snapshotBase64).then(
 			() => {
-				exportStatus = '已复制到剪贴板';
+				exportStatus = t('panels.sync.statuses.copySuccess');
 			},
 			() => {
-				exportStatus = '复制失败，请手动复制';
+				exportStatus = t('panels.sync.statuses.copyFailed');
 			}
 		);
 	}
 
 	async function handleImport() {
 		if (!importBase64.trim()) {
-			importStatus = '请输入 Base64 快照内容';
+			importStatus = t('panels.sync.statuses.importEmpty');
 			return;
 		}
 		try {
 			selectionBusy = true;
 			const result = importSelectionSnapshotBase64(importBase64);
-			importStatus = `导入成功：已选 ${result.selectedApplied} 条，待选 ${result.wishlistApplied} 条${
-				result.ignored.length ? `，忽略 ${result.ignored.length} 条` : ''
-			}`;
+			importStatus = format('panels.sync.statuses.importSuccess', {
+				selected: result.selectedApplied,
+				wishlist: result.wishlistApplied
+			});
+			if (result.ignored.length) {
+				importStatus += format('panels.sync.statuses.importIgnored', { count: result.ignored.length });
+			}
 		} catch (error) {
-			importStatus = `导入失败：${error instanceof Error ? error.message : String(error)}`;
+			importStatus = format('panels.sync.statuses.importFailed', {
+				error: error instanceof Error ? error.message : String(error)
+			});
 		} finally {
 			selectionBusy = false;
 		}
@@ -64,7 +90,7 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 
 	function startGithubLogin() {
 		if (!hasGithubConfig) {
-			gistStatus = '未配置 GitHub Client ID，无法登录';
+			gistStatus = t('panels.sync.githubMissing');
 			return;
 		}
 		const width = 520;
@@ -83,7 +109,7 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 			if (event.origin !== window.location.origin) return;
 			if (event.data?.type === 'github-token' && event.data.token) {
 				githubToken.set(event.data.token);
-				gistStatus = 'GitHub 登录成功';
+				gistStatus = t('panels.sync.statuses.githubLoginSuccess');
 			}
 		}
 		window.addEventListener('message', handleMessage);
@@ -93,7 +119,7 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 	function requireGithubToken() {
 		const token = get(githubToken);
 		if (!token) {
-			gistStatus = '请先登录 GitHub';
+			gistStatus = t('panels.sync.statuses.requireLogin');
 		}
 		return token;
 	}
@@ -103,7 +129,7 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 		if (!token) return;
 		try {
 			gistBusy = true;
-			gistStatus = '正在生成快照并同步...';
+			gistStatus = t('panels.sync.statuses.syncing');
 			const bundle = await loadStateBundle();
 			const result = await syncStateBundle(bundle, {
 				token,
@@ -111,36 +137,84 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 				note: gistNote.trim() || undefined,
 				public: gistPublic
 			});
-			gistStatus = `同步成功：${result.url}`;
+			gistStatus = format('panels.sync.statuses.syncSuccess', { url: result.url });
 			if (!gistId.trim()) {
 				gistId = result.id;
 			}
 		} catch (error) {
-			gistStatus = `同步失败：${error instanceof Error ? error.message : String(error)}`;
+			gistStatus = format('panels.sync.statuses.syncFailed', {
+				error: error instanceof Error ? error.message : String(error)
+			});
 		} finally {
 			gistBusy = false;
 		}
 	}
 </script>
 
-<section class="panel">
-	<header>
-		<h3>导入 / 导出 & 同步</h3>
-		<p>当前学期：{datasetMeta.semester}</p>
-	</header>
-	<div class="content">
+<ListSurface
+	title={t('panels.sync.title')}
+	subtitle={format('panels.sync.currentTerm', { term: datasetMeta.semester ?? '' })}
+	density="comfortable"
+>
 		<div class="sync-grid">
+			{#if storageSnapshot}
+				<div class="card">
+					<h4>{t('panels.sync.storageTitle')}</h4>
+					<p>{t('panels.sync.storageDescription')}</p>
+					<ul class="storage-list">
+						<li>
+							{t('panels.sync.storageLanguage', { locale: storageSnapshot.locale })}
+						</li>
+						<li>
+							{t('panels.sync.storageTheme', { theme: storageSnapshot.themeId })}
+						</li>
+						<li>
+							{t('panels.sync.storagePagination', {
+								mode:
+									storageSnapshot.pagination.mode === 'paged'
+										? t('settings.paged')
+										: t('settings.continuous'),
+								size: storageSnapshot.pagination.pageSize,
+								neighbors: storageSnapshot.pagination.pageNeighbors
+							})}
+						</li>
+						<li>
+							{t('panels.sync.storageSelectionMode', {
+								mode:
+									storageSnapshot.selectionMode === 'allowOverflowMode'
+										? t('settings.allowOverflowMode')
+										: t('settings.overflowSpeedRaceMode')
+							})}
+						</li>
+						<li>
+							{t('panels.sync.storageCrossCampus', {
+								value: storageSnapshot.crossCampusAllowed ? t('dropdowns.enabled') : t('dropdowns.disabled')
+							})}
+						</li>
+						<li>
+							{t('panels.sync.storageCollapse', {
+								value: storageSnapshot.collapseCoursesByName ? t('dropdowns.enabled') : t('dropdowns.disabled')
+							})}
+						</li>
+						<li>
+							{t('panels.sync.storageTimeTemplates', {
+								count: storageSnapshot.timeTemplates.length
+							})}
+						</li>
+					</ul>
+				</div>
+			{/if}
 			<div class="card">
-				<h4>导出选课状态</h4>
-				<p>生成 Base64 快照（包含学期/版本），方便复制或贴到 Issue/Gist。</p>
+				<h4>{t('panels.sync.exportTitle')}</h4>
+				<p>{t('panels.sync.exportDescription')}</p>
 				<div class="stack">
-					<textarea readonly placeholder="点击下方按钮生成 Base64" value={snapshotBase64} rows="5"></textarea>
+					<textarea readonly placeholder={t('panels.sync.exportPlaceholder')} value={snapshotBase64} rows="5"></textarea>
 					<div class="actions">
 						<button class="primary" on:click={generateSnapshot} disabled={selectionBusy}>
-							生成 Base64
+							{t('panels.sync.exportButton')}
 						</button>
 						<button class="secondary" on:click={copySnapshot} disabled={!snapshotBase64}>
-							复制
+							{t('panels.sync.copyButton')}
 						</button>
 					</div>
 				</div>
@@ -149,12 +223,12 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 				{/if}
 			</div>
 			<div class="card">
-				<h4>导入选课状态</h4>
-				<p>粘贴 Base64 快照，恢复“已选 / 待选”列表。</p>
+				<h4>{t('panels.sync.importTitle')}</h4>
+				<p>{t('panels.sync.importDescription')}</p>
 				<div class="stack">
-					<textarea placeholder="粘贴 Base64 字符串" bind:value={importBase64} rows="5"></textarea>
+					<textarea placeholder={t('panels.sync.importPlaceholder')} bind:value={importBase64} rows="5"></textarea>
 					<button class="primary" on:click={handleImport} disabled={selectionBusy}>
-						导入 Base64
+						{t('panels.sync.importButton')}
 					</button>
 				</div>
 				{#if importStatus}
@@ -162,55 +236,50 @@ const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 				{/if}
 			</div>
 			<div class="card gist-card">
-				<h4>同步到 GitHub Gist</h4>
-				<p>打包愿望/选课/操作日志等状态，上传到私有 Gist 作为云备份。</p>
+				<h4>{t('panels.sync.gistTitle')}</h4>
+				<p>{t('panels.sync.gistDescription')}</p>
 				<form class="gist-form" on:submit|preventDefault={handleGistSync}>
-				{#if $githubToken}
-					<div class="login-state">
-						<span>已登录 GitHub</span>
-						<button type="button" class="secondary" on:click={clearGithubToken}>
-								退出
+					{#if $githubToken}
+						<div class="login-state">
+							<span>{t('panels.sync.gistLoggedIn')}</span>
+							<button type="button" class="secondary" on:click={clearGithubToken}>
+								{t('panels.sync.logoutGithub')}
 							</button>
 						</div>
 					{:else}
 						<button type="button" class="primary" on:click={startGithubLogin}>
-							登录 GitHub
+							{t('panels.sync.loginGithub')}
 						</button>
 					{/if}
 					<label class="form-group">
-						<span>Gist ID（可选）</span>
+						<span>{t('panels.sync.gistIdLabel')}</span>
 						<input
 							type="text"
-							placeholder="已存在的 Gist ID，用于增量更新"
+							placeholder={t('panels.sync.gistIdPlaceholder')}
 							bind:value={gistId}
 						/>
 					</label>
 					<label class="form-group">
-						<span>备注 / Note</span>
+						<span>{t('panels.sync.noteLabel')}</span>
 						<input
 							type="text"
-							placeholder="描述此次同步，如 2025 春测试"
+							placeholder={t('panels.sync.notePlaceholder')}
 							bind:value={gistNote}
 						/>
 					</label>
 					<label class="toggle">
 						<input type="checkbox" bind:checked={gistPublic} />
-						<span>公开 Gist（默认私有）</span>
+						<span>{t('panels.sync.publicLabel')}</span>
 					</label>
 					<button class="primary" type="submit" disabled={gistBusy || !hasGithubConfig}>
-						{gistBusy ? '同步中...' : '上传到 Gist'}
+						{gistBusy ? t('panels.sync.statuses.syncing') : t('panels.sync.uploadButton')}
 					</button>
 				</form>
 				{#if gistStatus}
 					<p class="status">{gistStatus}</p>
 				{:else if !hasGithubConfig}
-					<p class="status">未配置 GitHub Client ID，无法发起 GitHub 登录。</p>
+					<p class="status">{t('panels.sync.githubMissing')}</p>
 				{/if}
 			</div>
 		</div>
-	</div>
-</section>
-
-<style lang="scss">
-	@use "$lib/styles/apps/SyncPanel.styles.scss" as *;
-</style>
+</ListSurface>

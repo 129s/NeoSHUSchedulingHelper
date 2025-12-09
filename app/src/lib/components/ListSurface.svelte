@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { translator } from '$lib/i18n';
+	import '$lib/styles/list-surface.scss';
+
 	let hasSearch = false;
 	let hasFilters = false;
 	let hasFooter = false;
@@ -7,6 +10,9 @@
 	export let subtitle: string | null = null;
 	export let count: number | null = null;
 	export let density: 'comfortable' | 'compact' = 'comfortable';
+
+	let t = (key: string) => key;
+	$: t = $translator;
 
 	$: hasSearch = Boolean($$slots?.search);
 	$: hasFilters = Boolean($$slots?.filters) || Boolean($$slots?.['filters-settings']);
@@ -26,7 +32,7 @@
 		</div>
 		<div class="list-surface__header-actions">
 			{#if typeof count === 'number'}
-				<span class="count">{count} 条</span>
+				<span class="count">{t('lists.countLabel').replace('{count}', String(count))}</span>
 			{/if}
 			<slot name="header-actions" />
 		</div>
@@ -53,5 +59,3 @@
 		<slot name="footer" />
 	</footer>
 </section>
-
-<style lang="scss" src="$lib/styles/list-surface.scss"></style>

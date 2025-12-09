@@ -87,3 +87,9 @@ The design system MUST expose a token pack (SCSS/CSS variables) for spacing (`--
 - **WHEN** rendering filter chips or hover/diagnostics panels
 - **THEN** they pull padding/radius/colors from the shared token pack, ensuring consistent look across solver/course panels without duplicating SCSS constants.
 
+### Requirement: Template copy resolves via shared i18n keys
+Meta-templates, Dock headers, and shared panels MUST render titles/descriptions from the translator in `app/src/lib/i18n/`. Hard-coded strings are forbidden; panels either accept a `titleKey` or call `t('panels.X.title')` directly so locale switches update immediately.
+
+#### Scenario: Dock panel header translation
+- **WHEN** a Dock or list template renders its header
+- **THEN** the component consumes `t('panels.*')`/`t('calendar.*')` keys, wiring `layout.tabs` entries as the GoldenLayout tab labels so toggling locales updates the layout without reloading.

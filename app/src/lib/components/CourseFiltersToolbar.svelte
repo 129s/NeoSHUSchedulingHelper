@@ -5,6 +5,8 @@ import type { LimitRuleKey, LimitMode } from '../../config/selectionFilters';
 import FilterBar from '$lib/components/FilterBar.svelte';
 import Chip from '$lib/components/Chip.svelte';
 import ChipGroup from '$lib/components/ChipGroup.svelte';
+import { translator } from '$lib/i18n';
+import '$lib/styles/course-filters-toolbar.scss';
 
 	export let filters: Writable<CourseFilterState>;
 	export let options: CourseFilterOptions;
@@ -13,6 +15,72 @@ import ChipGroup from '$lib/components/ChipGroup.svelte';
 	let showAdvanced = false;
 	let showLangMode = false;
 	let showWeekFold = false;
+
+	let t = (key: string) => key;
+	$: t = $translator;
+
+	const parityOptionValues = ['any', 'odd', 'even', 'all'] as const;
+	const spanOptionValues = ['any', 'upper', 'lower', 'full'] as const;
+
+	const conflictOptionValues: ConflictFilterMode[] = [
+		'any',
+		'no-conflict',
+		'no-time-conflict',
+		'no-hard-conflict',
+		'no-impossible'
+	];
+	const conflictLabelKey: Record<ConflictFilterMode, string> = {
+		any: 'filters.conflictOptions.any',
+		'no-conflict': 'filters.conflictOptions.noConflict',
+		'no-time-conflict': 'filters.conflictOptions.noTimeConflict',
+		'no-hard-conflict': 'filters.conflictOptions.noHardConflict',
+		'no-impossible': 'filters.conflictOptions.noImpossible'
+	};
+
+	$: viewModeLabel =
+		mode === 'wishlist'
+			? t('filters.viewModes.wishlist')
+			: mode === 'selected'
+				? t('filters.viewModes.selected')
+				: t('filters.viewModes.all');
+
+	$: displayOptionChoices =
+		mode === 'selected'
+			? [
+					{ value: 'all', label: t('filters.displayOptions.all') },
+					{ value: 'unselected', label: t('filters.displayOptions.selectedPending') },
+					{ value: 'selected', label: t('filters.displayOptions.selectedChosen') }
+			  ]
+			: [
+					{ value: 'all', label: t('filters.displayOptions.all') },
+					{ value: 'unselected', label: t('filters.displayOptions.wishlistPending') },
+					{ value: 'selected', label: t('filters.displayOptions.wishlistSelected') }
+			  ];
+
+	$: conflictOptions = conflictOptionValues.map((value) => ({
+		value,
+		label: t(conflictLabelKey[value])
+	}));
+
+	$: languageSummary =
+		$filters.teachingLanguage.length || $filters.teachingMode.length
+			? $filters.teachingLanguage.concat($filters.teachingMode).join(t('filters.listSeparator'))
+			: t('filters.noLimit');
+
+	$: paritySummary = t(
+		`filters.weekParitySummary.${($filters.weekParityFilter as 'any' | 'odd' | 'even' | 'all') ?? 'any'}`
+	);
+	$: spanSummary = t(
+		`filters.weekSpanSummary.${($filters.weekSpanFilter as 'any' | 'upper' | 'lower' | 'full') ?? 'any'}`
+	);
+	$: parityOptionLabels = parityOptionValues.map((value) => ({
+		value,
+		label: t(`filters.weekParityOptions.${value}`)
+	}));
+	$: spanOptionLabels = spanOptionValues.map((value) => ({
+		value,
+		label: t(`filters.weekSpanOptions.${value}`)
+	}));
 
 	function updateFilter<K extends keyof CourseFilterState>(key: K, value: CourseFilterState[K]) {
 		filters.update((current) => ({ ...current, [key]: value }));
@@ -42,7 +110,7 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 	<svelte:fragment slot="mode">
 		{#if mode}
 			<div class="mode-indicator">
-				视图：{mode === 'wishlist' ? '待选' : mode === 'selected' ? '已选' : '全部'}
+				{t('filters.view')}: {viewModeLabel}
 			</div>
 		{/if}
 	</svelte:fragment>
@@ -50,11 +118,11 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 	<svelte:fragment slot="simple">
 		<div class="simple-row">
 			<label class="field">
-				<span>搜索</span>
+				<span>{t('filters.search')}</span>
 				<input
 					class="simple-input"
 					type="search"
-					placeholder="课程名/课程号/教师号"
+					placeholder={t('filters.searchPlaceholder')}
 					value={$filters.keyword}
 					disabled={showAdvanced}
 					on:input={(e) => updateFilter('keyword', (e.currentTarget as HTMLInputElement).value)}
@@ -66,13 +134,13 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 	<svelte:fragment slot="chips">
 		<div class="chip-row">
 			<Chip selectable selected={$filters.regexEnabled} disabled={showAdvanced} on:click={() => updateFilter('regexEnabled', !$filters.regexEnabled)}>
-				正则
+				{t('filters.regex')}
 			</Chip>
 			<Chip selectable selected={$filters.matchCase} disabled={showAdvanced} on:click={() => updateFilter('matchCase', !$filters.matchCase)}>
-				大小写
+				{t('filters.caseSensitive')}
 			</Chip>
 			<Chip variant="accent" on:click={() => (showAdvanced = !showAdvanced)}>
-				{showAdvanced ? '关闭高级' : '高级筛选'}
+				{showAdvanced ? t('filters.closeAdvanced') : t('filters.advanced')}
 			</Chip>
 		</div>
 	</svelte:fragment>
@@ -80,7 +148,7 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 	<svelte:fragment slot="settings">
 		<div class="settings-row">
 			<label class="field">
-				<span>排序</span>
+				<span>{t('filters.sort')}</span>
 				<select value={$filters.sortOptionId} on:change={(e) => updateFilter('sortOptionId', (e.currentTarget as HTMLSelectElement).value)}>
 					{#each options.sortOptions as opt}
 						<option value={opt.id}>{opt.label}</option>
@@ -93,26 +161,19 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 	<svelte:fragment slot="view-controls">
 		<div class="view-controls">
 			<label class="field">
-				<span>状态</span>
+				<span>{t('filters.status')}</span>
 				<select value={$filters.displayOption} on:change={(e) => updateFilter('displayOption', (e.currentTarget as HTMLSelectElement).value as any)}>
-					<option value="all">全部</option>
-					{#if mode !== 'selected'}
-						<option value="unselected">只显示未待选</option>
-						<option value="selected">只显示已待选</option>
-					{:else}
-						<option value="unselected">只显示未选</option>
-						<option value="selected">只显示已选</option>
-					{/if}
+					{#each displayOptionChoices as opt (opt.value)}
+						<option value={opt.value}>{opt.label}</option>
+					{/each}
 				</select>
 			</label>
 			<label class="field">
-				<span>冲突</span>
+				<span>{t('filters.conflict')}</span>
 				<select value={$filters.conflictMode} on:change={(e) => updateFilter('conflictMode', (e.currentTarget as HTMLSelectElement).value as ConflictFilterMode)}>
-					<option value="any">不筛</option>
-					<option value="no-conflict">无冲突</option>
-					<option value="no-conflic">无conflic</option>
-					<option value="no-weak-impossible">无weak-impossible</option>
-					<option value="no-impossible">无impossible</option>
+					{#each conflictOptions as opt (opt.value)}
+						<option value={opt.value}>{opt.label}</option>
+					{/each}
 				</select>
 			</label>
 		</div>
@@ -122,50 +183,50 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 		{#if showAdvanced}
 			<div class="advanced-grid">
 				<label class="field">
-					<span>校区</span>
+					<span>{t('filters.campus')}</span>
 					<select value={$filters.campus} on:change={(e) => updateFilter('campus', (e.currentTarget as HTMLSelectElement).value)}>
-						<option value="">全部</option>
+						<option value="">{t('filters.displayOptions.all')}</option>
 						{#each options.campuses as campus}
 							<option value={campus}>{campus}</option>
 						{/each}
 					</select>
 				</label>
 				<label class="field">
-					<span>学院</span>
+					<span>{t('filters.college')}</span>
 					<select value={$filters.college} on:change={(e) => updateFilter('college', (e.currentTarget as HTMLSelectElement).value)}>
-						<option value="">全部</option>
+						<option value="">{t('filters.displayOptions.all')}</option>
 						{#each options.colleges as college}
 							<option value={college}>{college}</option>
 						{/each}
 					</select>
 				</label>
 				<label class="field">
-					<span>专业</span>
+					<span>{t('filters.major')}</span>
 					<select value={$filters.major} on:change={(e) => updateFilter('major', (e.currentTarget as HTMLSelectElement).value)}>
-						<option value="">全部</option>
+						<option value="">{t('filters.displayOptions.all')}</option>
 						{#each options.majors as major}
 							<option value={major}>{major}</option>
 						{/each}
 					</select>
 				</label>
 				<label class="field">
-					<span>特殊课程</span>
+					<span>{t('filters.specialFilter')}</span>
 					<select value={$filters.specialFilter} on:change={(e) => updateFilter('specialFilter', (e.currentTarget as HTMLSelectElement).value as any)}>
-						<option value="all">不过滤</option>
-						<option value="sports-only">仅体育</option>
-						<option value="exclude-sports">排除体育</option>
+						<option value="all">{t('filters.specialFilterOptions.all')}</option>
+						<option value="sports-only">{t('filters.specialFilterOptions.sportsOnly')}</option>
+						<option value="exclude-sports">{t('filters.specialFilterOptions.excludeSports')}</option>
 					</select>
 				</label>
 				<label class="field">
-					<span>学分区间</span>
+					<span>{t('filters.creditRange')}</span>
 					<div class="inline-inputs">
-						<input type="number" min="0" placeholder="最小" value={$filters.minCredit ?? ''} on:input={(e) => updateFilter('minCredit', (e.currentTarget as HTMLInputElement).value ? Number((e.currentTarget as HTMLInputElement).value) : null)} />
+						<input type="number" min="0" placeholder={t('filters.minPlaceholder')} value={$filters.minCredit ?? ''} on:input={(e) => updateFilter('minCredit', (e.currentTarget as HTMLInputElement).value ? Number((e.currentTarget as HTMLInputElement).value) : null)} />
 						<span>—</span>
-						<input type="number" min="0" placeholder="最大" value={$filters.maxCredit ?? ''} on:input={(e) => updateFilter('maxCredit', (e.currentTarget as HTMLInputElement).value ? Number((e.currentTarget as HTMLInputElement).value) : null)} />
+						<input type="number" min="0" placeholder={t('filters.maxPlaceholder')} value={$filters.maxCredit ?? ''} on:input={(e) => updateFilter('maxCredit', (e.currentTarget as HTMLInputElement).value ? Number((e.currentTarget as HTMLInputElement).value) : null)} />
 					</div>
 				</label>
 				<label class="field">
-					<span>容量下限</span>
+					<span>{t('filters.capacityMin')}</span>
 					<input
 						type="number"
 						min="0"
@@ -177,18 +238,14 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 			<div class="advanced-folds">
 				<div class="fold">
 					<button type="button" class="fold-toggle" on:click={() => (showLangMode = !showLangMode)}>
-						教学语言/模式
+						{t('filters.languageMode')}
 						<span class="hint">
-							{#if $filters.teachingLanguage.length || $filters.teachingMode.length}
-								{$filters.teachingLanguage.concat($filters.teachingMode).join('，')}
-							{:else}
-								不限
-							{/if}
+							{languageSummary}
 						</span>
 					</button>
 					{#if showLangMode}
 						<div class="fold-body two-cols">
-							<ChipGroup label="教学语言">
+							<ChipGroup label={t('filters.teachingLanguageLabel')}>
 								{#each options.teachingLanguages as lang}
 									<Chip
 										selectable
@@ -207,7 +264,7 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 									</Chip>
 								{/each}
 							</ChipGroup>
-							<ChipGroup label="教学模式">
+							<ChipGroup label={t('filters.teachingModeLabel')}>
 								{#each options.teachingModes as modeOpt}
 									<Chip
 										selectable
@@ -227,7 +284,7 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 								{/each}
 								<input
 									type="text"
-									placeholder="其他教学模式（文本包含）"
+									placeholder={t('filters.modeOtherPlaceholder')}
 									value={$filters.teachingModeOther}
 									on:input={(e) => updateFilter('teachingModeOther', (e.currentTarget as HTMLInputElement).value)}
 								/>
@@ -237,30 +294,24 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 				</div>
 				<div class="fold">
 					<button type="button" class="fold-toggle" on:click={() => (showWeekFold = !showWeekFold)}>
-						周次筛选
+						{t('filters.weekFilters')}
 						<span class="hint">
-							{#if $filters.weekParityFilter !== 'any' || $filters.weekSpanFilter !== 'any'}
-								{($filters.weekParityFilter !== 'any' ? ($filters.weekParityFilter === 'odd' ? '单周' : $filters.weekParityFilter === 'even' ? '双周' : '全周') : '周次不限')}
-								/
-								{($filters.weekSpanFilter !== 'any' ? ($filters.weekSpanFilter === 'upper' ? '前半' : $filters.weekSpanFilter === 'lower' ? '后半' : '全学期') : '半学期不限')}
-							{:else}
-								不限
-							{/if}
+							{paritySummary} / {spanSummary}
 						</span>
 					</button>
 					{#if showWeekFold}
 						<div class="fold-body two-cols">
-							<ChipGroup label="单双周">
-								{#each ['any', 'odd', 'even', 'all'] as option}
-									<Chip selectable selected={$filters.weekParityFilter === option} on:click={() => updateFilter('weekParityFilter', option as any)}>
-										{option === 'any' ? '不筛' : option === 'odd' ? '单周' : option === 'even' ? '双周' : '全部周'}
+							<ChipGroup label={t('filters.weekParityLabel')}>
+								{#each parityOptionLabels as option}
+									<Chip selectable selected={$filters.weekParityFilter === option.value} on:click={() => updateFilter('weekParityFilter', option.value as any)}>
+										{option.label}
 									</Chip>
 								{/each}
 							</ChipGroup>
-							<ChipGroup label="上/下半">
-								{#each ['any', 'upper', 'lower', 'full'] as option}
-									<Chip selectable selected={$filters.weekSpanFilter === option} on:click={() => updateFilter('weekSpanFilter', option as any)}>
-										{option === 'any' ? '不筛' : option === 'upper' ? '前半' : option === 'lower' ? '后半' : '全学期'}
+							<ChipGroup label={t('filters.weekSpanLabel')}>
+								{#each spanOptionLabels as option}
+									<Chip selectable selected={$filters.weekSpanFilter === option.value} on:click={() => updateFilter('weekSpanFilter', option.value as any)}>
+										{option.label}
 									</Chip>
 								{/each}
 							</ChipGroup>
@@ -271,5 +322,3 @@ function updateLimit(key: LimitRuleKey, value: LimitMode) {
 		{/if}
 	</svelte:fragment>
 </FilterBar>
-
-<style src="$lib/styles/course-filters-toolbar.scss" lang="scss"></style>

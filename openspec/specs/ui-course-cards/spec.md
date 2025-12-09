@@ -26,6 +26,24 @@ Course cards MUST render a circular capacity indicator showing remaining seats (
 - **WHEN** the ring is visible
 - **THEN** the center text shows remaining seats only (no total or negative numbers; overflow renders as 0).
 
+### Requirement: Capacity ring adds an accent halo + digit focus
+Beyond the thresholds above, the ring MUST show an accent halo outside the stroke that subtly pulses (mirroring the memory-display analogy mentioned in the shared UI cleanup change) while keeping the inner "剩余人数" digit legible. The halo reinforces the current status color and is the same element that a hover state can brighten to draw attention without creating additional DOM nodes.
+
+#### Scenario: Halo + inner digit remains legible
+- **WHEN** a course is hovered/focused or the UI mirrors the memory-display style
+- **THEN** the outer halo brightens to 8% luminosity increase while the inner number stays centered, and both elements obey the shared tokenized spacing and color roles defined in `ui-templates`.
+
+### Requirement: Memory-display behavior of capacity rings
+The capacity ring MUST behave like a memory display: the outer halo pulses gently to mimic the glow of an electronic display, reinforcing the "实时数据" feel. The inner digit remains crisp and readable, mimicking LED segments. This behavior connects the UI to the underlying data freshness and solver urgency, making capacity changes feel tangible and immediate. The accent halo serves as a persistent reminder of the course status, even at the peripheral vision.
+
+#### Scenario: Outer halo pulse effect
+- **WHEN** the capacity ring is visible
+- **THEN** the outer accent halo exhibits a subtle pulsing animation that evokes electronic displays, enhancing the sense of real-time data without causing distraction or accessibility issues.
+
+#### Scenario: Inner digit clarity
+- **WHEN** displaying remaining seats
+- **THEN** the inner digit maintains high contrast against its background and uses a monospace font weight to mimic LED segment displays, ensuring numeric changes are easy to scan.
+
 ### Requirement: Card layout follows four-column structure with leading color marker
 Course cards MUST follow a four-column layout: (1) left color marker keyed per course; (2) course name with subtext for teacher + teacher ID; (3) class time; (4) special info (e.g., cross-campus allowed) plus campus when enabled. The capacity ring is displayed without prominently printing raw counts; remaining seats appear inside/next to the ring.
 
@@ -63,26 +81,33 @@ Course cards and calendar entries MUST reuse the shared color utilities (`colorF
 - **WHEN** two neighboring cards/entries receive overly similar colors from the hash
 - **THEN** the system adjusts saturation/lightness to increase contrast while retaining the original hue family.
 
-### Requirement: Term-based “可超额/拼手速” prompt and settings
-The UI MUST prompt users about “可超额/拼手速” mode on first visit per term, persist their choice for that term, and allow changing it in settings.
+### Requirement: Term-based "可超额/拼手速" prompt and settings
+The UI MUST prompt users about "可超额/拼手速" mode on first visit per term, persist their choice for that term, and allow changing it in settings.
 
 #### Scenario: First visit per term
 - **WHEN** the user opens the app for a new term
-- **THEN** a modal asks for “可超额/拼手速” mode; the choice is stored for that term and not shown again until term changes (unless toggled in settings).
+- **THEN** a modal asks for "可超额/拼手速" mode; the choice is stored for that term and not shown again until term changes (unless toggled in settings).
 
 ### Requirement: Course cards show actions and solver intent hooks
-Course cards MUST expose actions for joining wishlist/selected and for adding solver intents: clearly labeled “必选” (add hard constraint, group=must-pick-one) and “排除”/“不选班次” (exclude section). For single-section groups, “必选” locks that section; for multi-section groups, “必选” sets group to pick exactly one and can open include/exclude selection. Buttons A/B (必选/排除) follow the common list-template style used across lists.
+Course cards MUST expose actions for joining wishlist/selected and for adding solver intents: clearly labeled "必选" (add hard constraint, group=must-pick-one) and "排除"/"不选班次" (exclude section). For single-section groups, "必选" locks that section; for multi-section groups, "必选" sets group to pick exactly one and can open include/exclude selection. Buttons A/B (必选/排除) follow the common list-template style used across lists.
 
 #### Scenario: Group constraint actions
 - **WHEN** a card represents a group (collapsed or expanded)
-- **THEN** it shows intent buttons; “必” adds hard must-pick-one, “不选” excludes selected section(s), and changes propagate to the solver lists.
+- **THEN** it shows intent buttons; "必" adds hard must-pick-one, "不选" excludes selected section(s), and changes propagate to the solver lists.
 
 ### Requirement: Status chips only signal deterministic states
-Status badges on course cards MUST only convey deterministic capacity states (`余量紧张` for limited seats, `已满` for zero/overflow). Soft descriptors such as “热门”/“火爆” are forbidden unless backed by explicit data fields.
+Status badges on course cards MUST only convey deterministic capacity states (`余量紧张` for limited seats, `已满` for zero/overflow). Soft descriptors such as "热门"/"火爆" are forbidden unless backed by explicit data fields.
 
 #### Scenario: Deterministic status
 - **WHEN** capacity warning badges render
-- **THEN** they use the limited/full copy above; no “热门” or其它模糊词出现。
+- **THEN** they use the limited/full copy above; no "热门" or其它模糊词出现。
+
+### Requirement: Course card copy resolves through i18n
+Every label, action button, and status string on course cards MUST be provided via the shared translator under `app/src/lib/i18n/`. Implementations SHOULD add/update keys under `courseCard`, `panels`, or domain-specific namespaces instead of hard-coding literals so locale toggles stay in sync.
+
+#### Scenario: Adding a new course card affordance
+- **WHEN** a new badge or button is introduced on a course card
+- **THEN** its label is defined in the locale dictionaries and consumed via `t('courseCard.x')`, ensuring both zh-CN and en-US copies stay paired.
 
 ### Requirement: Include/Exclude micro selection on lists
 Course/group list rows MUST provide a lightweight include/exclude affordance: a small square checkbox to mark a section or group as focused for intent editing. Tapping A/B buttons maps to include (必选) and exclude states; tapping again clears the state. Already-marked items MUST show a clear/cancel affordance so users can return to neutral.

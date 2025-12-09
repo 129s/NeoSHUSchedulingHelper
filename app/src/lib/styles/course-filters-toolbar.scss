@@ -1,36 +1,36 @@
-@use '$lib/styles/ui-tokens.scss' as *;
+@use '$lib/styles/tokens' as *;
 
 .mode-indicator {
-	font-size: var(--ui-font-sm);
-	color: var(--ui-muted);
+	font-size: var(--token-font-body-small-size);
+	color: var(--token-color-on-surface-variant);
 }
 
 .simple-row {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--ui-space-3);
+	gap: var(--token-space-3);
 }
 
 .field {
 	display: flex;
 	flex-direction: column;
-	gap: var(--ui-space-1);
-	font-size: var(--ui-font-sm);
-	color: var(--ui-muted);
+	gap: var(--token-space-1);
+	font-size: var(--token-font-body-small-size);
+	color: var(--token-color-on-surface-variant);
 }
 
 .simple-input {
-	border: 1px solid var(--ui-border);
-	border-radius: var(--ui-radius-md);
-	padding: var(--ui-space-2) var(--ui-space-3);
-	font-size: var(--ui-font-md);
-	background: var(--ui-surface-muted);
+	border: 1px solid var(--token-color-outline-variant);
+	border-radius: var(--token-radius-md);
+	padding: var(--token-space-2) var(--token-space-3);
+	font-size: var(--token-font-body-medium-size);
+	background: var(--token-color-surface-container-low);
 }
 
 .chip-row {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--ui-space-2);
+	gap: var(--token-space-2);
 }
 
 .settings-row {
@@ -42,46 +42,46 @@
 .view-controls select,
 .advanced-grid select,
 .advanced-grid input {
-	border: 1px solid var(--ui-border);
-	border-radius: var(--ui-radius-md);
-	padding: var(--ui-space-2) var(--ui-space-3);
-	background: var(--ui-surface-muted);
+	border: 1px solid var(--token-color-outline-variant);
+	border-radius: var(--token-radius-md);
+	padding: var(--token-space-2) var(--token-space-3);
+	background: var(--token-color-surface-container-low);
 }
 
 .view-controls {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: var(--ui-space-3);
+	gap: var(--token-space-3);
 }
 
 .advanced-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: var(--ui-space-3);
-	margin-bottom: var(--ui-space-3);
+	gap: var(--token-space-3);
+	margin-bottom: var(--token-space-3);
 }
 
 .inline-inputs {
 	display: flex;
 	align-items: center;
-	gap: var(--ui-space-2);
+	gap: var(--token-space-2);
 }
 
 .inline-inputs span {
-	color: var(--ui-muted);
+	color: var(--token-color-on-surface-variant);
 }
 
 .advanced-folds {
 	display: flex;
 	flex-direction: column;
-	gap: var(--ui-space-3);
+	gap: var(--token-space-3);
 }
 
 .fold {
-	border: 1px solid var(--ui-border);
-	border-radius: var(--ui-radius-md);
-	padding: var(--ui-space-3);
-	background: var(--ui-surface-muted);
+	border: 1px solid var(--token-color-outline-variant);
+	border-radius: var(--token-radius-md);
+	padding: var(--token-space-3);
+	background: var(--token-color-surface-container-low);
 }
 
 .fold-toggle {
@@ -91,27 +91,27 @@
 	width: 100%;
 	border: none;
 	background: transparent;
-	font-size: var(--ui-font-md);
+	font-size: var(--token-font-body-medium-size);
 	cursor: pointer;
 	color: inherit;
 }
 
 .fold .hint {
-	font-size: var(--ui-font-sm);
-	color: var(--ui-muted);
+	font-size: var(--token-font-body-small-size);
+	color: var(--token-color-on-surface-variant);
 }
 
 .fold-body {
-	margin-top: var(--ui-space-2);
+	margin-top: var(--token-space-2);
 	display: flex;
-	gap: var(--ui-space-4);
+	gap: var(--token-space-4);
 	flex-wrap: wrap;
 }
 
 .fold-body input {
-	border: 1px solid var(--ui-border);
-	border-radius: var(--ui-radius-md);
-	padding: var(--ui-space-2) var(--ui-space-3);
+	border: 1px solid var(--token-color-outline-variant);
+	border-radius: var(--token-radius-md);
+	padding: var(--token-space-2) var(--token-space-3);
 	width: 100%;
-	background: var(--ui-surface);
+	background: var(--token-color-surface);
 }

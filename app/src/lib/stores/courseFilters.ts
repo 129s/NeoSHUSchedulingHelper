@@ -1,4 +1,5 @@
 import { writable, type Writable } from 'svelte/store';
+import { t } from '../i18n';
 import {
 	getSelectionFiltersConfig,
 	type DisplayOptionId,
@@ -9,7 +10,7 @@ import {
 import { courseCatalog } from '../data/catalog/courseCatalog';
 import { getTaxonomyOptions } from '../data/taxonomy/taxonomyRegistry';
 
-export type ConflictFilterMode = 'any' | 'no-conflict' | 'no-conflic' | 'no-weak-impossible' | 'no-impossible';
+export type ConflictFilterMode = 'any' | 'no-conflict' | 'no-time-conflict' | 'no-hard-conflict' | 'no-impossible';
 
 export interface CourseFilterState {
 	keyword: string;
@@ -83,7 +84,12 @@ export const filterOptions: CourseFilterOptions = {
 	limitRules: selectionFiltersConfig.limitRules,
 	sortOptions: selectionFiltersConfig.sortOptions,
 	regexTargets: selectionFiltersConfig.regex.targets,
-	teachingLanguages: ['中文', '全英', '双语', '未指定'],
+	teachingLanguages: [
+		t('config.teachingLanguages.chinese'),
+		t('config.teachingLanguages.english'),
+		t('config.teachingLanguages.bilingual'),
+		t('config.teachingLanguages.unspecified')
+	],
 	teachingModes: Array.from(new Set(courseCatalog.map((c) => c.teachingMode ?? '').filter(Boolean)))
 };
 

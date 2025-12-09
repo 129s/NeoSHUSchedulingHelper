@@ -1,4 +1,6 @@
 <script lang="ts">
+	import '$lib/styles/chip-group.scss';
+
 	export let label: string | null = null;
 </script>
 
@@ -8,5 +10,3 @@
 		<slot />
 	</div>
 </div>
-
-<style lang="scss" src="$lib/styles/chip-group.scss"></style>

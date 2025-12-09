@@ -29,7 +29,9 @@ export async function ensureActionLogLoaded() {
 	await ensureLoaded();
 }
 
-export async function appendActionLog(entry: Omit<ActionLogEntry, 'id' | 'timestamp'> & { timestamp?: number }) {
+export async function appendActionLog(
+	entry: Omit<ActionLogEntry, 'id' | 'timestamp' | 'termId'> & { termId?: string; timestamp?: number }
+) {
 	const log = await ensureLoaded();
 	log.add(entry);
 	entriesWritable.set(log.getEntries());

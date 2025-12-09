@@ -1,22 +1,22 @@
-@use '$lib/styles/ui-tokens.scss' as *;
+@use '$lib/styles/tokens' as *;
 
 .search-bar {
 	display: flex;
 	align-items: center;
-	gap: var(--ui-space-2);
-	background: var(--ui-surface);
+	gap: var(--token-space-2);
+	background: var(--token-color-surface);
 	border-radius: 999px;
-	border: 1px solid var(--ui-border);
-	padding: var(--ui-space-2) var(--ui-space-3);
+	border: 1px solid var(--token-color-outline-variant);
+	padding: var(--token-space-2) var(--token-space-3);
 }
 
 .search-bar.compact {
-	padding: var(--ui-space-1) var(--ui-space-2);
+	padding: var(--token-space-1) var(--token-space-2);
 }
 
 .icon {
-	font-size: var(--ui-font-md);
-	color: var(--ui-muted);
+	font-size: var(--token-font-body-medium-size);
+	color: var(--token-color-on-surface-variant);
 }
 
 input {
@@ -36,12 +36,12 @@ input:focus {
 	border: none;
 	background: none;
 	cursor: pointer;
-	color: var(--ui-muted);
-	font-size: var(--ui-font-md);
-	padding: var(--ui-space-1);
+	color: var(--token-color-on-surface-variant);
+	font-size: var(--token-font-body-medium-size);
+	padding: var(--token-space-1);
 	line-height: 1;
 }
 
 .clear-btn:hover {
-	color: var(--ui-warn);
+	color: var(--token-color-error);
 }

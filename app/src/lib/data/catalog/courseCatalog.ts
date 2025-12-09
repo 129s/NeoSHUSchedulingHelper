@@ -15,9 +15,23 @@ import rawSnapshot from '../../../../../crawler/data/terms/2025-16.json';
 import type { CourseTaxonomyInfo } from '../../types/taxonomy';
 import { resolveCourseTaxonomy } from './courseTaxonomy';
 import { initializeTaxonomyRegistry } from '../taxonomy/taxonomyRegistry';
+import { t } from '../../i18n/index.ts';
 
 const datasetConfig = getDatasetConfig();
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+function getWeekdayLabels() {
+	return [
+		t('courseCatalog.weekdays.monday'),
+		t('courseCatalog.weekdays.tuesday'),
+		t('courseCatalog.weekdays.wednesday'),
+		t('courseCatalog.weekdays.thursday'),
+		t('courseCatalog.weekdays.friday'),
+		t('courseCatalog.weekdays.saturday'),
+		t('courseCatalog.weekdays.sunday')
+	];
+}
+
+let WEEKDAY_LABELS: string[] | null = null;
 
 export interface ScheduleSummary {
 	day: number;
@@ -239,7 +253,7 @@ function formatSlot(chunks: ScheduleChunk[], calendar: CalendarConfig): string {
 	if (!chunks.length) return '未排课';
 	return chunks
 		.map((chunk) => {
-			const dayLabel = WEEKDAY_LABELS[chunk.day] ?? calendar.weekdays?.[chunk.day] ?? `第${chunk.day + 1}天`;
+			const dayLabel = getWeekdayLabels()[chunk.day] ?? calendar.weekdays?.[chunk.day] ?? `第${chunk.day + 1}天`;
 			const startLabel = chunk.startPeriod + 1;
 			const endLabel = chunk.endPeriod + 1;
 			const periodText = startLabel === endLabel ? `第${startLabel}节` : `第${startLabel}-${endLabel}节`;
@@ -266,7 +280,7 @@ function formatLocations(section: SectionEntry): string {
 function formatTeachers(section: SectionEntry, course: CourseRecord): string {
 	const teachers = section.teachers?.length ? section.teachers : [{ teacherId: course.teacherCode ?? '', name: course.teacherName }];
 	const names = teachers.map((teacher) => teacher.name).filter(Boolean);
-	return names.length ? names.join('、') : '未公布教师';
+	return names.length ? names.join('、') : t('courseCatalog.teacherUnassigned');
 }
 
 function deriveStatus(course: CourseRecord): 'limited' | 'full' | undefined {
@@ -277,8 +291,8 @@ function deriveStatus(course: CourseRecord): 'limited' | 'full' | undefined {
 
 function buildNote(course: CourseRecord, section: SectionEntry): string {
 	const seatInfo =
-		course.vacancy >= 0 ? `余量 ${course.vacancy}/${course.capacity}` : `容量 ${course.capacity}`;
-	const sectionLabel = section.sectionId ? `班号 ${section.sectionId}` : null;
+		course.vacancy >= 0 ? `${t('courseCatalog.remaining')} ${course.vacancy}/${course.capacity}` : `${t('courseCatalog.capacityLabel')} ${course.capacity}`;
+	const sectionLabel = section.sectionId ? `${t('courseCatalog.sectionId')} ${section.sectionId}` : null;
 	const activities = Array.from(
 		new Set(section.scheduleChunks?.map((chunk) => chunk.activity).filter(Boolean) ?? [])
 	);
@@ -310,7 +324,7 @@ function deriveLimitFlags(course: CourseRecord): CourseLimitFlags {
 		.forEach(value => phrases.add(value));
 
 	if (course.vacancy <= 0) {
-		phrases.add('人数已满');
+		phrases.add(t('courseCatalog.courseFull'));
 	}
 
 	const mergedText = Array.from(phrases).join(';');

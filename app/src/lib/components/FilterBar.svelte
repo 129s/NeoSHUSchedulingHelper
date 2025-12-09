@@ -1,4 +1,6 @@
 <script lang="ts">
+	import '$lib/styles/filter-bar.scss';
+
 	let hasMode = false;
 	let hasSimple = false;
 	let hasViewControls = false;
@@ -50,5 +52,3 @@
 		</div>
 	{/if}
 </section>
-
-<style lang="scss" src="$lib/styles/filter-bar.scss"></style>

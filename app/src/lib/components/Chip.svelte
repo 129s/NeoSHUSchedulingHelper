@@ -1,4 +1,6 @@
 <script lang="ts">
+	import '$lib/styles/chip.scss';
+
 	export let selectable = false;
 	export let selected = false;
 	export let disabled = false;
@@ -14,5 +16,3 @@
 >
 	<slot />
 </button>
-
-<style lang="scss" src="$lib/styles/chip.scss"></style>

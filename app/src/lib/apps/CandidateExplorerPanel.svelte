@@ -1,11 +1,15 @@
 <script lang="ts">
- import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
- import CourseCard from '$lib/components/CourseCard.svelte';
- import { filterOptions } from '$lib/stores/courseFilters';
- import { crossCampusAllowed } from '$lib/stores/coursePreferences';
- import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
- import { groupCoursesByName } from '$lib/utils/courseHelpers';
- import { courseCatalogMap } from '$lib/data/catalog/courseCatalog';
+import ListSurface from '$lib/components/ListSurface.svelte';
+import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
+import CourseCard from '$lib/components/CourseCard.svelte';
+import PaginationFooter from '$lib/components/PaginationFooter.svelte';
+import { translator } from '$lib/i18n';
+import { filterOptions } from '$lib/stores/courseFilters';
+import { crossCampusAllowed } from '$lib/stores/coursePreferences';
+import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
+import { groupCoursesByName } from '$lib/utils/courseHelpers';
+import { courseCatalogMap } from '$lib/data/catalog/courseCatalog';
+import '$lib/styles/panels/candidate-explorer-panel.scss';
 import {
 	collapseByName,
 	filteredCourses,
@@ -33,6 +37,9 @@ let loadedCount = 0;
 let listEl: HTMLDivElement | null = null;
 let lastMode: 'paged' | 'continuous' | null = null;
 let contentSignature = '';
+
+let t = (key: string) => key;
+$: t = $translator;
 
 $: pageSizeValue = Math.max(1, $pageSize || 1);
 $: totalItems = $filteredCourses.length;
@@ -78,63 +85,71 @@ function handleScroll(event: Event) {
 	}
 }
 
-$: neighborRange = (() => {
-	const count = Math.max(1, $pageNeighbors);
-	const start = Math.max(1, currentPage - count);
-	const end = Math.min(totalPages, currentPage + count);
-	return { start, end };
-})();
+const formatVariantCount = (count: number) =>
+	t('panels.allCourses.variantCountLabel').replace('{count}', String(count));
 
-	function describeConflict(courseId: string) {
+const formatGroupTotal = (count: number) =>
+	t('panels.candidates.groupTotal').replace('{count}', String(count));
+
+function describeConflict(courseId: string) {
 		const meta = $filterMeta.get(courseId);
 		if (!meta || meta.conflict === 'none') return null;
+		const conflictDivider = t('panels.common.conflictDivider');
 		if (meta.diagnostics.length) {
-			const msg = meta.diagnostics
-				.map((d) => (d.reason ? `${d.label}: ${d.reason}` : d.label))
-				.join('；');
-			return msg;
+			return meta.diagnostics
+				.map((d) =>
+					d.reason ? `${d.label}${conflictDivider}${d.reason}` : d.label
+				)
+				.join(t('panels.common.conflictListSeparator'));
 		}
-		const labels = meta.conflictTargets.map((id) => courseCatalogMap.get(id)?.title ?? id).join('、');
-		const prefix = meta.conflict === 'hard-conflict' ? '硬冲突' : '时间冲突';
-		return labels ? `${prefix} · ${labels}` : prefix;
+		const targetNames = meta.conflictTargets
+			.map((id) => courseCatalogMap.get(id)?.title ?? id)
+			.join(t('panels.common.conflictNameSeparator'));
+		const prefix =
+			meta.conflict === 'hard-conflict'
+				? t('panels.common.conflictHard')
+				: t('panels.common.conflictTime');
+		return targetNames ? `${prefix}${conflictDivider}${targetNames}` : prefix;
 	}
 </script>
 
-<section class="panel">
-	<header>
-		<div>
-			<h3>待选课程</h3>
-			<p>从这里选择或移除待选的课程。</p>
-		</div>
-		<div class="toolbar">
-			<button type="button" class="clear-btn" on:click={removeAll} disabled={$filteredCourses.length === 0}>
-				清空
-			</button>
-		</div>
-	</header>
-	<CourseFiltersToolbar {filters} options={filterOptions} mode="wishlist" />
+<ListSurface
+	title={t('panels.candidates.title')}
+	subtitle={t('panels.candidates.description')}
+	count={totalItems}
+	density="comfortable"
+>
+	<svelte:fragment slot="header-actions">
+		<button type="button" class="clear-btn" on:click={removeAll} disabled={$filteredCourses.length === 0}>
+			{t('panels.candidates.clear')}
+		</button>
+	</svelte:fragment>
+
+	<svelte:fragment slot="filters">
+		<CourseFiltersToolbar {filters} options={filterOptions} mode="wishlist" />
+	</svelte:fragment>
 
 	<div class="list-container" bind:this={listEl} on:scroll={handleScroll}>
-		{#if $collapseByName}
-			{#if grouped.length === 0}
-				<p class="empty">暂无待选课程</p>
+	{#if $collapseByName}
+		{#if grouped.length === 0}
+			<p class="empty">{t('panels.candidates.empty')}</p>
 			{:else}
-				{#each grouped as [groupKey, groupCourses] (groupKey)}
-					{@const primary = groupCourses[0]}
-					<div class="course-group" class:expanded={$expandedGroups.has(groupKey)}>
-						<button type="button" class="group-header" on:click={() => toggleGroup(groupKey)}>
-							<div class="group-info">
-								<strong>{groupKey}</strong>
-								<small>{primary?.slot ?? '暂无时间'} · {groupCourses.length} 个班次</small>
-							</div>
-							<span aria-hidden="true">{$expandedGroups.has(groupKey) ? '▲' : '▼'}</span>
-						</button>
-						<div class="group-toolbar">
-							<span>共 {groupCourses.length} 班次</span>
-							<button type="button" on:click={() => removeGroup(groupCourses)}>
-								取消待选
-							</button>
+			{#each grouped as [groupKey, groupCourses] (groupKey)}
+				{@const primary = groupCourses[0]}
+				<div class="course-group" class:expanded={$expandedGroups.has(groupKey)}>
+					<button type="button" class="group-header" on:click={() => toggleGroup(groupKey)}>
+						<div class="group-info">
+							<strong>{groupKey}</strong>
+							<small>{primary?.slot ?? t('courseCard.noTime')} · {formatVariantCount(groupCourses.length)}</small>
 						</div>
+						<span aria-hidden="true">{$expandedGroups.has(groupKey) ? '▲' : '▼'}</span>
+					</button>
+					<div class="group-toolbar">
+						<span>{formatGroupTotal(groupCourses.length)}</span>
+						<button type="button" on:click={() => removeGroup(groupCourses)}>
+							{t('panels.candidates.removeGroup')}
+						</button>
+					</div>
 						{#if $expandedGroups.has(groupKey)}
 							<div class="group-variants">
 								{#each groupCourses as course, variantIndex (course.id)}
@@ -144,7 +159,7 @@ $: neighborRange = (() => {
 										title={course.title}
 										teacher={course.teacher}
 										teacherId={course.teacherId}
-										time={course.slot ?? '暂无时间'}
+										time={course.slot ?? t('courseCard.noTime')}
 										campus={course.campus}
 										status={course.status}
 										crossCampusEnabled={$crossCampusAllowed}
@@ -159,14 +174,14 @@ $: neighborRange = (() => {
 										<div slot="actions" class="variant-actions">
 											{#if $selectedSet?.has(course.id)}
 												<button type="button" class="variant-action" on:click={() => reselectFromWishlist(course.id)}>
-													重选
+													{t('panels.selected.reselect')}
 												</button>
 											{:else}
 												<button type="button" class="variant-action positive" on:click={() => selectFromWishlist(course.id)}>
-													选课
+													{t('panels.candidates.select')}
 												</button>
 												<button type="button" class="variant-action" on:click={() => removeCourse(course.id)}>
-													取消待选
+													{t('panels.candidates.removeGroup')}
 												</button>
 											{/if}
 											{#if conflict}
@@ -180,9 +195,9 @@ $: neighborRange = (() => {
 					</div>
 				{/each}
 			{/if}
-		{:else}
-			{#if visibleCourses.length === 0}
-				<p class="empty">暂无待选课程</p>
+	{:else}
+		{#if visibleCourses.length === 0}
+			<p class="empty">{t('panels.candidates.empty')}</p>
 			{:else}
 				{#each visibleCourses as course, index (course.id)}
 					{@const conflict = describeConflict(course.id)}
@@ -190,9 +205,9 @@ $: neighborRange = (() => {
 						<CourseCard
 							id={course.id}
 							title={course.title}
-							teacher={course.teacher}
-							teacherId={course.teacherId}
-							time={course.slot ?? '暂无'}
+						teacher={course.teacher}
+						teacherId={course.teacherId}
+						time={course.slot ?? t('courseCard.noTimeShort')}
 						campus={course.campus}
 						status={course.status}
 						crossCampusEnabled={$crossCampusAllowed}
@@ -207,14 +222,14 @@ $: neighborRange = (() => {
 							<div slot="actions" class="course-actions">
 								{#if $selectedSet?.has(course.id)}
 									<button type="button" class="action-btn" on:click={() => reselectFromWishlist(course.id)}>
-										重选
+										{t('panels.selected.reselect')}
 									</button>
 								{:else}
 									<button type="button" class="action-btn positive" on:click={() => selectFromWishlist(course.id)}>
-										选课
+										{t('panels.candidates.select')}
 									</button>
 									<button type="button" class="action-btn" on:click={() => removeCourse(course.id)}>
-										取消待选
+										{t('panels.candidates.removeGroup')}
 									</button>
 								{/if}
 								{#if getVariantList(course.id).length > 1}
@@ -224,7 +239,7 @@ $: neighborRange = (() => {
 										class:active={$expandedCourse === course.id}
 										on:click={() => toggleVariantList(course.id)}
 									>
-										{$expandedCourse === course.id ? '收起' : '更多'}
+										{$expandedCourse === course.id ? t('panels.candidates.toggleMore.collapse') : t('panels.candidates.toggleMore.expand')}
 									</button>
 								{/if}
 								{#if conflict}
@@ -248,30 +263,14 @@ $: neighborRange = (() => {
 		{/if}
 	</div>
 
-	{#if $paginationMode === 'paged' && totalPages > 1}
-		<div class="pager">
-			<button type="button" on:click={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1}>上一页</button>
-			{#each Array.from({ length: neighborRange.end - neighborRange.start + 1 }, (_, i) => neighborRange.start + i) as page}
-				<button type="button" class:active={page === currentPage} on:click={() => handlePageChange(page)}>
-					{page}
-				</button>
-			{/each}
-			<button type="button" on:click={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages}>下一页</button>
-			<label class="jump">
-				<span>跳转</span>
-				<input
-					type="number"
-					min="1"
-					max={totalPages}
-					value={currentPage}
-					on:change={(e) => handlePageChange(Number((e.currentTarget as HTMLInputElement).value))}
-				/>
-			</label>
-			<span class="total">共 {totalPages} 页</span>
-		</div>
-	{/if}
-</section>
-
-<style lang="scss">
-	@use "$lib/styles/apps/CandidateExplorerPanel.styles.scss" as *;
-</style>
+	<svelte:fragment slot="footer">
+		{#if $paginationMode === 'paged' && totalPages > 1}
+			<PaginationFooter
+				currentPage={currentPage}
+				totalPages={totalPages}
+				pageNeighbors={$pageNeighbors}
+				onPageChange={handlePageChange}
+			/>
+		{/if}
+	</svelte:fragment>
+</ListSurface>
