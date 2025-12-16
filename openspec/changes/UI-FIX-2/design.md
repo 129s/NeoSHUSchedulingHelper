@@ -1,7 +1,7 @@
 # Design: UI-FIX-2
 
 ## 1. Shared ListSurface scaffolding
-- **Component:** `app/src/lib/components/ListSurface.svelte` + `app/src/lib/styles/list-surface.scss`.
+- **Component:** `app/src/lib/components/ListSurface.svelte`（UnoCSS + Virtual Theme tokens）
 - **Usage:** Each high-traffic panel now wraps its content with `<ListSurface>` and fills the named slots:
   - `AllCoursesPanel.svelte:111-279`
   - `SelectedCoursesPanel.svelte:104-222`
@@ -13,20 +13,15 @@
 - **Behavior:** Slots map to spec fields (header, header-meta/actions, search, filters + filters-settings, footer). CSS enforces clamp widths, stack breakpoints (520px, 320px), and pagination simplification (256px) per `spec://cluster/ui-templates#chunk-02`.
 
 ## 2. Tokenized layouts & spacing
-- **Panel styles:** All panel SCSS files (`app/src/lib/styles/panels/*.scss`) `@use '$lib/styles/tokens'` and rely on `var(--token-space-*)`, `var(--token-radius-*)`, `var(--token-font-*)`, `var(--token-color-*)` instead of literal px/rem gaps. Examples:
-  - `all-courses-panel.scss:1-150` – course group padding, intent actions, search shells.
-  - `selected-courses-panel.scss:1-120` – tab paddings, list border treatments, empty states.
-  - `candidate-explorer-panel.scss:1-130` – cluster cards, variant borders, pagination controls.
-  - `solver-panel.scss:1-200` – grid gaps, pill groups, CTA buttons, constraint forms.
-  - `settings-panel.scss:1-120`, `sync-panel.scss:1-140`, `action-log-panel.scss:1-90` follow the same pattern.
-- **Shared components:** `CourseFiltersToolbar.svelte` + `course-filters-toolbar.scss`, `PaginationFooter.svelte` + `.scss`, `CourseCard.svelte` + `.scss`, `ConstraintList.svelte`, `DiagnosticsList.svelte`, `DockWorkspace.svelte`, etc. import the token pack so nested layouts inherit the same spacing.
+- **Panel layouts:** Panel markup now encodes spacing via UnoCSS utilities + `--app-*` semantic tokens directly inside Svelte files (`AllCoursesPanel.svelte`, `SelectedCoursesPanel.svelte`, `CandidateExplorerPanel.svelte`, `SolverPanel.svelte`, `SettingsPanel.svelte`, `SyncPanel.svelte`, `CourseCalendarPanel.svelte`). The legacy `app/src/lib/styles/panels/*.scss` files were deleted.
+- **Shared components:** `CourseFiltersToolbar.svelte`, `PaginationFooter.svelte`, `CourseCard.svelte`, `ConstraintList.svelte`, `DiagnosticsList.svelte`, `DockPanelShell.svelte`, etc. consume the Virtual Theme Layer tokens so nested layouts inherit the same spacing without bespoke SCSS.
 - **Outcome:** ~40 hard-coded spacing declarations were replaced with semantic tokens, enabling density toggles and cross-theme consistency.
 
-## 3. Dual-track design system
-- **Abstract tokens:** `_abstract.scss` defines the semantic surface/color/typography/spacing/elevation/state tokens consumed across the app.
-- **Theme layers:** `_md3.scss` maps the abstract tokens to Material Design 3 values; `_fluent2.scss` mirrors the same token names to Fluent 2 primitives (e.g., `var(--colorNeutral*)`, `var(--spacingHorizontal*)`).
-- **Legacy bridge:** `_legacy-shims.scss` maintains `--ui-*` variables for components still migrating; warnings are documented inside `index.scss`/`README.md` with the three-phase removal timeline.
-- **Entry point + docs:** `index.scss`, `README.md`, and `DESIGN-SYSTEM-SPEC.md` explain architecture, token categories, theme switching, and troubleshooting. Components simply `@use '$lib/styles/tokens' as *;` and rely on CSS var lookups, so flipping `<html data-theme="fluent2">` swaps the palette with zero component changes.
+## 3. Virtual Theme Layer
+- **Semantic tokens:** `app/tokens/_base.css` enumerates every `--app-*` color/spacing/radius/typography variable with fallbacks and animation presets (`--app-animation-ring`, etc.).
+- **Theme layers:** `app/tokens/theme.{material,fluent,terminal}.css` map those semantics to the Fluent runtime tokens (`--accent-*`, `--neutral-*`) and MD3 outputs (`--md-sys-*`). Future themes only extend this directory.
+- **Runtime hookup:** `app/src/routes/+layout.svelte` imports `_base.css`, all theme files, and `animations.css`, then toggles `<body data-theme>` via the `uiTheme` store so components only depend on semantic vars. No `$lib/styles/tokens/*.scss` imports remain for panels/primitives.
+- **Docs:** `app/tokens/README.md` plus `openspec/specs/tokens/spec.md` describe the mapping rules and validation steps (run `npm run check`, refresh memory) whenever tokens change.
 
 ## 4. State handling & stores
 - ListSurface consumers use i18n translator store + pagination settings (`$lib/stores/paginationSettings`, etc.) so header counts and footers auto-update.

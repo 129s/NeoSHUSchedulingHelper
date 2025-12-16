@@ -9,9 +9,8 @@
 </script>
 
 <script lang="ts">
-	import ListSurface from '$lib/components/ListSurface.svelte';
+	import AppListCard from '$lib/components/AppListCard.svelte';
 	import { translator } from '$lib/i18n';
-	import '$lib/styles/diagnostics-list.scss';
 
 	export let title: string | null = null;
 	export let subtitle: string | null = null;
@@ -25,25 +24,43 @@
 	$: t = $translator;
 	$: resolvedTitle = title ?? t('diagnostics.defaultTitle');
 	$: resolvedEmptyLabel = emptyLabel ?? t('diagnostics.emptyLabel');
+
+	const listClass = 'flex flex-col gap-2 list-none p-0 m-0';
+	const pillBase =
+		'inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--app-color-bg-elevated)_90%,var(--app-color-fg)_10%)] px-3 py-1 text-[var(--app-text-xs)] text-[var(--app-color-fg)]';
 </script>
 
-<div aria-live="polite">
-	<ListSurface title={resolvedTitle} subtitle={subtitle} count={items.length} density="compact">
-		{#if !items.length}
-			<p class="muted diagnostics-empty">{resolvedEmptyLabel}</p>
-		{:else}
-			<ul class="diagnostics-items">
-				{#each items as item (item.id)}
-					<li class:hover-disabled={hoverDisabled}>
-						<div class="label-block">
-							<span class="label">{item.label}</span>
-							{#if item.type}<span class="pill secondary">{item.type}</span>{/if}
-							{#if item.meta}<span class="pill secondary">{item.meta}</span>{/if}
+<div aria-live="polite" class="flex flex-col gap-2 min-w-0">
+	{#if resolvedTitle || subtitle}
+		<header class="flex flex-col gap-1">
+			{#if resolvedTitle}
+				<h4 class="m-0 text-[var(--app-text-sm)] font-semibold text-[var(--app-color-fg)]">{resolvedTitle}</h4>
+			{/if}
+			{#if subtitle}
+				<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{subtitle}</p>
+			{/if}
+		</header>
+	{/if}
+
+	{#if !items.length}
+		<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{resolvedEmptyLabel}</p>
+	{:else}
+		<ul class={listClass}>
+			{#each items as item (item.id)}
+				<li>
+					<AppListCard
+						title={item.label}
+						subtitle={item.reason}
+						interactive={!hoverDisabled}
+						class="gap-2"
+					>
+						<div slot="meta" class="flex flex-wrap gap-2">
+							{#if item.type}<span class={pillBase}>{item.type}</span>{/if}
+							{#if item.meta}<span class={pillBase}>{item.meta}</span>{/if}
 						</div>
-						<span class="reason">{item.reason}</span>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</ListSurface>
+					</AppListCard>
+				</li>
+			{/each}
+		</ul>
+	{/if}
 </div>

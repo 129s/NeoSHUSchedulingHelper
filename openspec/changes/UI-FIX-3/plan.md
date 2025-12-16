@@ -7,10 +7,10 @@ Deliver the three P2 backlog items tied to UI-FIX-3: shared pagination footer, c
 1. **Finalize PaginationFooter API**
    - Lock the `currentPage/totalPages/pageNeighbors/onPageChange` contract in `PaginationFooter.svelte`.
    - Replace bespoke pagination markup in AllCourses, SelectedCourses, CandidateExplorer with the footer’s ListSurface slot.
-   - Confirm responsive rules (360px column; 256px prev/next only) via SCSS tokens.
+   - Confirm responsive rules (360px column; 256px prev/next only) via UnoCSS utilities + `--app-*` tokens.
 2. **Calendar overflow indicator**
    - Extend `CourseCalendarPanel.state.ts` to compute clip-paths + text measurements.
-   - Render circled-digit indicators when `shouldShowLabel` fails and style them in `course-calendar-panel.scss`.
+   - Render circled-digit indicators when `shouldShowLabel` fails and style them via UnoCSS classes inside `CourseCalendarPanel.svelte`.
    - Keep accessible `aria-label`s and expose metadata through `HoverInfoBar`.
 3. **Bidirectional hover**
    - Ensure list panels call `activateHover`/`clearHover` with `source: 'list'`.

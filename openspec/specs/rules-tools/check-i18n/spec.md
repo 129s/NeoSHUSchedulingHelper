@@ -16,14 +16,22 @@ python3 scripts/check_i18n.py compare --locales app/src/lib/i18n/locales/zh-CN.t
 python3 scripts/check_i18n.py scan --root app/src
 python3 scripts/check_i18n.py all
 ```
+Also acceptable (recommended for day-to-day TS/Svelte checks):
+```bash
+cd app && npm run check
+```
 - `compare`: Flattens locale dictionaries (dot notation) and reports missing keys/blank values. Exit code 0 when identical, 1 when mismatched, 2 on parse errors.
-- `scan`: Walks Svelte/TSX/JS files (default allowlist) excluding translation directories, and reports bare Chinese characters with file + line numbers. Exit code 0 when no hits, 1 when hits, 2 on IO errors.
+- `scan`: UI-only scan. By default it scans only `.svelte` files under `app/src` (routes/components/panels), excluding translation directories, and reports bare Chinese characters with file + line numbers. Exit code 0 when no hits, 1 when hits, 2 on IO errors.
 - `all`: Runs compare + scan sequentially and surfaces first failure.
 
 ## Configuration
 - Skip directories: `.git`, `node_modules`, `.svelte-kit`, `dist`, `openspec`, `agentTemps`, `crawler`, `docs` (customizable via CLI `--ignore` and `--root`).
-- Allowed extensions: `.ts`, `.tsx`, `.js`, `.jsx`, `.svelte`. Use `--ext` to add more.
+- Allowed extensions: defaults to `.svelte` (UI-only). Use `--ext` to explicitly scan other extensions when needed.
 - Use `--json` to emit machine-readable results for CI (documented in script help output).
+
+## Ignore Policy (Scan)
+- Allowed ignore: generated/build/vendor dirs (`node_modules`, `.svelte-kit`, `dist`, etc.) and locale sources (`app/src/lib/i18n/locales`).
+- Disallowed ignore: UI source roots (`app/src/routes`, `app/src/lib/apps`, `app/src/lib/components`, `app/src/lib/primitives`, `app/src/lib/layout`). UI literals must be converted to i18n keys instead of being excluded.
 
 ## Process Integration
 - AGENTS.md references this spec under Core/Behavior rules so every agent remembers to run it automatically.

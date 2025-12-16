@@ -4,19 +4,18 @@
 	type Padding = 'none' | 'sm' | 'md' | 'lg';
 	type TagName = keyof HTMLElementTagNameMap;
 
-	let {
-		class: className = '',
-		padding = 'md' as Padding,
-		interactive = false,
-		elevated = true,
-		as = 'section' as TagName
-	} = $props();
+	export let className = '';
+	export { className as class };
+	export let padding: Padding = 'md';
+	export let interactive = false;
+	export let elevated = true;
+	export let as: TagName = 'section';
 
 	const paddingMap: Record<Padding, string> = {
 		none: 'p-0',
-		sm: 'p-3',
-		md: 'p-4',
-		lg: 'p-6'
+		sm: 'p-2.5',
+		md: 'p-3',
+		lg: 'p-4'
 	};
 
 	$: paddingClass = paddingMap[padding];
@@ -32,13 +31,13 @@
 	{...$$restProps}
 >
 	{#if hasHeader}
-		<header class="mb-3 flex flex-col gap-1">
+		<header class="mb-2 flex flex-col gap-1">
 			<slot name="header" />
 		</header>
 	{/if}
 	<slot />
 	{#if hasFooter}
-		<footer class="mt-4 flex flex-col gap-1 text-[var(--app-text-sm)] text-[color:var(--app-color-fg-muted)]">
+		<footer class="mt-3 flex flex-col gap-1 text-[var(--app-text-sm)] text-[color:var(--app-color-fg-muted)]">
 			<slot name="footer" />
 		</footer>
 	{/if}

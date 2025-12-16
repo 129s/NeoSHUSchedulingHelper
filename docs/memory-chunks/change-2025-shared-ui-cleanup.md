@@ -28,11 +28,11 @@ Links:
 ## spec://change/2025-shared-ui-cleanup#chunk-03
 Context: Plan Phases 3-4 + Dependencies/Deliverables.
 Contract:
-- Phase 3: convert each app panel SCSS to ListSurface/FilterBar + Spacekit stack utilities; delete `.styles.scss` once merged.
+- Phase 3: convert each app panel to the ListSurface/FilterBar template using UnoCSS utilities + Virtual Theme tokens; delete the legacy `.styles.scss` files once merged.
 - Phase 4: validate via `npm run check`, Spacekit preview, and MCP UI review (chrome-devtools + Gemini) verifying consistent templates.
-- Deliverables: SCSS centralized, primitive component library, updated specs referencing capacity ring + localization, PLAN tasks updated.
+- Deliverables: SCSS removal, primitive component library, updated specs referencing capacity ring + localization, PLAN tasks updated.
 State:
-- Dependencies include Spacekit package, existing ListSurface/FilterBar components.
+- Dependencies include the UnoCSS-driven ListSurface/FilterBar primitives plus component-local styles where needed (e.g., CourseCard). Legacy SCSS such as `panels/*.scss`, `components/course-card.scss`, and `components/selection-mode-prompt.scss` has been deleted in favor of UnoCSS + `--app-*` tokens inside each Svelte component.
 Edge:
 - UI modifications without MCP review can't close change; ensure deliverables documented.
 Links:

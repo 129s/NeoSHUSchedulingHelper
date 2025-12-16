@@ -5,8 +5,11 @@
 	import ListSurface from '$lib/components/ListSurface.svelte';
 	import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
 	import CourseCard from '$lib/components/CourseCard.svelte';
-	import PaginationFooter from '$lib/components/PaginationFooter.svelte';
+import CardActionBar from '$lib/components/CardActionBar.svelte';
+	import AppButton from '$lib/primitives/AppButton.svelte';
+	import AppPagination from '$lib/primitives/AppPagination.svelte';
 	import { translator } from '$lib/i18n';
+	import { formatConflictLabel } from '$lib/utils/diagnosticLabels';
 	import { crossCampusAllowed } from '$lib/stores/coursePreferences';
 	import { filterOptions } from '$lib/stores/courseFilters';
 	import { paginationMode, pageSize, pageNeighbors } from '$lib/stores/paginationSettings';
@@ -35,15 +38,10 @@
 	let t = (key: string) => key;
 	$: t = $translator;
 
-	const groupHeaderClass =
-		'flex w-full items-center justify-between px-4 py-3 text-left text-[var(--app-color-fg)] transition-colors hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]';
-	const variantActionsClass =
-		'mt-3 flex flex-wrap items-center gap-2 rounded-[var(--app-radius-md)] bg-[var(--app-color-bg-muted)] px-3 py-2 text-[var(--app-text-sm)]';
-	const variantButtonClass =
-		'inline-flex items-center rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-1.5 text-[var(--app-text-sm)] text-[var(--app-color-fg)] transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--app-color-bg)_94%,#000)]';
-	const variantDangerButtonClass = `${variantButtonClass} border-[color:var(--app-color-danger)] text-[var(--app-color-danger)]`;
-	const scrollContainerClass =
-		'h-full min-h-[240px] overflow-auto rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)]';
+	const actionBarClass = 'flex flex-wrap items-center gap-2 justify-end';
+	const variantActionsClass = 'mt-2 flex flex-wrap items-center gap-2 text-[var(--app-text-sm)]';
+	const contentContainerClass =
+		'flex flex-col min-h-[240px] rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)]';
 
 	$: pageSizeValue = Math.max(1, $pageSize || 1);
 	$: totalItems = $selectedCourses.length;
@@ -99,16 +97,17 @@
 		const divider = t('panels.common.conflictDivider');
 		if (meta.diagnostics.length) {
 			return meta.diagnostics
-				.map((d) => (d.reason ? `${d.label}${divider}${d.reason}` : d.label))
+				.map((d) => {
+					const label = formatConflictLabel(d.label, t);
+					return d.reason ? `${label}${divider}${d.reason}` : label;
+				})
 				.join(t('panels.common.conflictListSeparator'));
 		}
 		const targets = meta.conflictTargets
-			.map((id) => courseCatalogMap.get(id)?.title ?? id)
+			.map((id) => courseCatalogMap.get(id)?.title ?? null)
+			.filter((value): value is string => Boolean(value))
 			.join(t('panels.common.conflictNameSeparator'));
-		const prefix =
-			meta.conflict === 'hard-conflict'
-				? t('panels.common.conflictHard')
-				: t('panels.common.conflictTime');
+		const prefix = formatConflictLabel(meta.conflict, t);
 		return targets ? `${prefix}${divider}${targets}` : prefix;
 	}
 </script>
@@ -120,13 +119,14 @@
 		count={totalItems}
 		density="comfortable"
 		enableStickyToggle={true}
-		bodyScrollable={false}
+		bodyScrollable={true}
+		on:scroll={handleScroll}
 	>
 		<svelte:fragment slot="filters">
 			<CourseFiltersToolbar {filters} options={filterOptions} mode="selected" />
 		</svelte:fragment>
 
-		<div class={scrollContainerClass} on:scroll={handleScroll}>
+		<div class={contentContainerClass}>
 			{#if $collapseByName}
 				{#if grouped.length === 0}
 					<p class="px-6 py-10 text-center text-[var(--app-text-md)] text-[var(--app-color-fg-muted)]">
@@ -137,35 +137,45 @@
 						{#each grouped as [groupKey, courses], groupIndex (groupKey)}
 							{@const primary = courses[0]}
 							{@const expanded = $expandedGroups.has(groupKey)}
-							<article class={`flex flex-col ${expanded ? 'bg-[var(--app-color-bg-muted)]' : 'bg-transparent'}`}>
-								<button type="button" class={groupHeaderClass} on:click={() => toggleGroup(groupKey)}>
-									<div class="flex flex-col gap-1">
-										<strong class="text-[var(--app-text-md)] font-semibold">{groupKey}</strong>
-										<small class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">
-											{primary?.slot ?? t('courseCard.noTime')} · {formatVariantCount(courses.length)}
-										</small>
-									</div>
-									<span aria-hidden="true" class="text-[var(--app-color-fg-muted)]">
-										{expanded ? '▴' : '▾'}
-									</span>
-								</button>
+							{@const conflict = describeConflict(primary.id)}
+							{@const conflictDetails = conflict ? [{ label: conflict }] : null}
+							<div class="flex flex-col gap-3 px-3 py-3">
+								<CourseCard
+									id={primary.id}
+									title={groupKey}
+									time={primary.slot ?? t('courseCard.noTime')}
+									courseCode={primary.courseCode}
+									credit={primary.credit ?? null}
+									colorSeed={primary.id}
+									showTime={false}
+									hoverable={courses.length === 1}
+									onHover={courses.length === 1 ? () => handleHover(primary) : undefined}
+									onLeave={courses.length === 1 ? handleLeave : undefined}
+									toneIndex={groupIndex}
+									showConflictBadge={Boolean(conflictDetails)}
+									conflictDetails={conflictDetails}
+								>
+									<CardActionBar slot="actions" class={actionBarClass}>
+										<span class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">
+											{formatVariantCount(courses.length)}
+										</span>
+										<AppButton variant="secondary" size="sm" on:click={() => toggleGroup(groupKey)}>
+											{expanded ? t('panels.candidates.toggleMore.collapse') : t('panels.candidates.toggleMore.expand')}
+										</AppButton>
+									</CardActionBar>
+								</CourseCard>
 								{#if expanded}
-									<div class="flex flex-col gap-3 border-t border-[color:var(--app-color-border-subtle)] px-3 pb-4">
+									<div class="flex flex-col gap-3 border-t border-[color:var(--app-color-border-subtle)] pt-3">
 										{#each courses as course, variantIndex (course.id)}
 											{@const conflict = describeConflict(course.id)}
 											{@const variantTotal = variantsCount(course.id)}
-											{@const isSameTime = course.slot === primary.slot}
-											{@const isSameLocation = course.location === primary.location}
 											<CourseCard
 												id={course.id}
 												title={course.title}
-												teacher={course.teacher}
-												teacherId={course.teacherId}
-												time={isSameTime ? '—' : course.slot ?? t('courseCard.noTime')}
-												specialInfo={isSameLocation ? undefined : course.location}
-												campus={course.campus}
+												time={course.slot ?? t('courseCard.noTime')}
+												courseCode={course.courseCode}
+												credit={course.credit ?? null}
 												status={course.status}
-												crossCampusEnabled={$crossCampusAllowed}
 												capacity={course.capacity}
 												vacancy={course.vacancy}
 												colorSeed={course.id}
@@ -176,25 +186,22 @@
 												showConflictBadge={Boolean(conflict)}
 												conflictDetails={conflict ? [{ label: conflict }] : null}
 											>
-												<div slot="actions" class={variantActionsClass}>
+												<CardActionBar slot="actions" class={variantActionsClass}>
 													{#if variantTotal > 1}
-														<button type="button" class={variantButtonClass} on:click={() => reselectCourse(course.id)}>
+														<AppButton variant="secondary" size="sm" on:click={() => reselectCourse(course.id)}>
 															{t('panels.selected.reselect')}
-														</button>
+														</AppButton>
 													{:else}
-														<button type="button" class={variantDangerButtonClass} on:click={() => deselectCourse(course.id)}>
+														<AppButton variant="secondary" size="sm" on:click={() => deselectCourse(course.id)}>
 															{t('panels.selected.drop')}
-														</button>
+														</AppButton>
 													{/if}
-													{#if conflict}
-														<span class="text-[var(--app-text-xs)] text-[var(--app-color-danger)]" title={conflict}>{conflict}</span>
-													{/if}
-												</div>
+												</CardActionBar>
 											</CourseCard>
 										{/each}
 									</div>
 								{/if}
-							</article>
+							</div>
 						{/each}
 					</div>
 				{/if}
@@ -205,59 +212,52 @@
 					</p>
 				{:else}
 					<div class="flex flex-col divide-y divide-[color:var(--app-color-border-subtle)]">
-						{#each visibleCourses as course, index (course.id)}
-							{@const conflict = describeConflict(course.id)}
-							{@const variantTotal = variantsCount(course.id)}
-							<CourseCard
-								id={course.id}
+				{#each visibleCourses as course, index (course.id)}
+					{@const conflict = describeConflict(course.id)}
+					{@const variantTotal = variantsCount(course.id)}
+					<CourseCard
+						id={course.id}
 								title={course.title}
-								teacher={course.teacher}
-								teacherId={course.teacherId}
 								time={course.slot ?? t('courseCard.noTimeShort')}
-								specialInfo={course.location}
-								campus={course.campus}
+								courseCode={course.courseCode}
+								credit={course.credit ?? null}
 								status={course.status}
-								crossCampusEnabled={$crossCampusAllowed}
 								capacity={course.capacity}
 								vacancy={course.vacancy}
 								colorSeed={course.id}
-								specialTags={course.specialTags}
-								onHover={() => handleHover(course)}
-								onLeave={handleLeave}
-								toneIndex={index}
-								showConflictBadge={Boolean(conflict)}
-								conflictDetails={conflict ? [{ label: conflict }] : null}
-							>
-								<div slot="actions" class={variantActionsClass}>
-									{#if variantTotal > 1}
-										<button type="button" class={variantButtonClass} on:click={() => reselectCourse(course.id)}>
-											{t('panels.selected.reselect')}
-										</button>
-									{:else}
-										<button type="button" class={variantDangerButtonClass} on:click={() => deselectCourse(course.id)}>
-											{t('panels.selected.drop')}
-										</button>
-									{/if}
-									{#if conflict}
-										<span class="text-[var(--app-text-xs)] text-[var(--app-color-danger)]" title={conflict}>{conflict}</span>
-									{/if}
-								</div>
-							</CourseCard>
-						{/each}
-					</div>
-				{/if}
+						specialTags={course.specialTags}
+						onHover={() => handleHover(course)}
+						onLeave={handleLeave}
+						toneIndex={index}
+						showConflictBadge={Boolean(conflict)}
+						conflictDetails={conflict ? [{ label: conflict }] : null}
+					>
+						<CardActionBar slot="actions" class={variantActionsClass}>
+							{#if variantTotal > 1}
+								<AppButton variant="secondary" size="sm" on:click={() => reselectCourse(course.id)}>
+									{t('panels.selected.reselect')}
+								</AppButton>
+							{:else}
+								<AppButton variant="secondary" size="sm" on:click={() => deselectCourse(course.id)}>
+									{t('panels.selected.drop')}
+								</AppButton>
+							{/if}
+						</CardActionBar>
+					</CourseCard>
+				{/each}
+			</div>
+		{/if}
+	{/if}
+			{#if showPaginationFooter}
+				<div class="mt-auto border-t border-[color:var(--app-color-border-subtle)] px-3 py-1">
+					<AppPagination
+						currentPage={currentPage}
+						totalPages={totalPages}
+						pageNeighbors={$pageNeighbors}
+						onPageChange={handlePageChange}
+					/>
+				</div>
 			{/if}
 		</div>
-
-		<svelte:fragment slot="footer">
-			{#if showPaginationFooter}
-				<PaginationFooter
-					currentPage={currentPage}
-					totalPages={totalPages}
-					pageNeighbors={$pageNeighbors}
-					onPageChange={handlePageChange}
-				/>
-			{/if}
-		</svelte:fragment>
 	</ListSurface>
 </DockPanelShell>

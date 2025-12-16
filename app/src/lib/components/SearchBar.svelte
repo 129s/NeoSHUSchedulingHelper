@@ -2,15 +2,15 @@
 
 <script lang="ts">
 	import { translator } from '$lib/i18n';
+	import AppButton from '$lib/primitives/AppButton.svelte';
 
 	type Size = 'default' | 'compact';
 
-	let {
-		value = '',
-		placeholder,
-		size = 'default' as Size,
-		class: className = ''
-	} = $props();
+	export let value = '';
+	export let placeholder: string | undefined = undefined;
+	export let size: Size = 'default';
+	export let className = '';
+	export { className as class };
 
 	let t = (key: string) => key;
 	$: t = $translator;
@@ -36,13 +36,15 @@
 		spellcheck="false"
 	/>
 	{#if value}
-		<button
-			type="button"
-			class="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--app-color-fg-muted)] transition-colors duration-150 hover:text-[var(--app-color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--app-color-primary)] focus-visible:ring-offset-1 focus-visible:ring-offset-[color:var(--app-color-bg)]"
+		<AppButton
+			variant="ghost"
+			size="sm"
+			iconOnly={true}
+			class="h-6 w-6 rounded-full text-[var(--app-color-fg-muted)] hover:text-[var(--app-color-danger)]"
 			on:click={() => (value = '')}
 			aria-label={t('searchBar.clear')}
 		>
 			✕
-		</button>
+		</AppButton>
 	{/if}
 </div>

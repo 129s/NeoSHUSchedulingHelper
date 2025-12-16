@@ -40,7 +40,7 @@
 	});
 </script>
 
-<div bind:this={host} class="w-full h-full min-w-0 min-h-0">
+<div bind:this={host} class="w-full min-w-0 min-h-0">
 	{#if compact}
 		<slot name="compact" />
 	{:else}

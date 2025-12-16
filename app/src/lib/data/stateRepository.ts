@@ -17,7 +17,7 @@ const ACTION_LOG_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS action_log (
 	id TEXT PRIMARY KEY,
 	termId TEXT NOT NULL,
-	timestamp INTEGER NOT NULL,
+	timestamp BIGINT NOT NULL,
 	action TEXT NOT NULL,
 	payload TEXT,
 	version TEXT,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS solver_result (
 	runType TEXT NOT NULL DEFAULT 'manual',
 	desiredSignature TEXT,
 	selectionSignature TEXT,
-	createdAt INTEGER NOT NULL,
+	createdAt BIGINT NOT NULL,
 	metrics TEXT,
 	assignment TEXT,
 	plan TEXT NOT NULL,
@@ -290,6 +290,43 @@ async function ensureActionLogSchema(layer: Awaited<ReturnType<typeof getQueryLa
 	await ensureTableColumn(layer, 'action_log', 'defaultTarget', 'ALTER TABLE action_log ADD COLUMN defaultTarget TEXT');
 	await ensureTableColumn(layer, 'action_log', 'overrideMode', 'ALTER TABLE action_log ADD COLUMN overrideMode TEXT');
 	await ensureTableColumn(layer, 'action_log', 'revertedEntryId', 'ALTER TABLE action_log ADD COLUMN revertedEntryId TEXT');
+	await ensureDuckdbBigintColumn(layer, {
+		table: 'action_log',
+		column: 'timestamp',
+		backupTable: 'action_log__timestamp_backup',
+		dropIndexes: ['idx_action_log_timestamp'],
+		recreateTableSql: ACTION_LOG_TABLE_SQL,
+		columnsToCopy: [
+			'id',
+			'termId',
+			'timestamp',
+			'action',
+			'payload',
+			'version',
+			'undo',
+			'dockSessionId',
+			'selectionSnapshot',
+			'solverResultId',
+			'defaultTarget',
+			'overrideMode',
+			'revertedEntryId'
+		],
+		selectExpressions: [
+			'id',
+			`COALESCE(termId, '${DEFAULT_TERM_ID}') AS termId`,
+			'CAST(COALESCE(timestamp, 0) AS BIGINT) AS timestamp',
+			`COALESCE(action, 'unknown') AS action`,
+			'payload',
+			'version',
+			'undo',
+			'dockSessionId',
+			'selectionSnapshot',
+			'solverResultId',
+			'defaultTarget',
+			'overrideMode',
+			'revertedEntryId'
+		]
+	});
 	await layer.exec(ACTION_LOG_INDEX_SQL);
 }
 
@@ -303,6 +340,45 @@ async function ensureSolverResultSchema(layer: Awaited<ReturnType<typeof getQuer
 	);
 	await ensureTableColumn(layer, 'solver_result', 'runType', "ALTER TABLE solver_result ADD COLUMN runType TEXT DEFAULT 'manual'");
 	await ensureTableColumn(layer, 'solver_result', 'diagnostics', 'ALTER TABLE solver_result ADD COLUMN diagnostics TEXT');
+	await ensureDuckdbBigintColumn(layer, {
+		table: 'solver_result',
+		column: 'createdAt',
+		backupTable: 'solver_result__createdAt_backup',
+		dropIndexes: ['idx_solver_result_createdAt'],
+		recreateTableSql: SOLVER_RESULT_TABLE_SQL,
+		columnsToCopy: [
+			'id',
+			'termId',
+			'status',
+			'solver',
+			'runType',
+			'desiredSignature',
+			'selectionSignature',
+			'createdAt',
+			'metrics',
+			'assignment',
+			'plan',
+			'unsatCore',
+			'diagnostics',
+			'note'
+		],
+		selectExpressions: [
+			'id',
+			`COALESCE(termId, '${DEFAULT_TERM_ID}') AS termId`,
+			`COALESCE(status, 'sat') AS status`,
+			`COALESCE(solver, 'unknown') AS solver`,
+			`COALESCE(runType, 'manual') AS runType`,
+			'desiredSignature',
+			'selectionSignature',
+			'CAST(COALESCE(createdAt, 0) AS BIGINT) AS createdAt',
+			'metrics',
+			'assignment',
+			`COALESCE(plan, 'W10=') AS plan`,
+			'unsatCore',
+			'diagnostics',
+			'note'
+		]
+	});
 	await layer.exec(SOLVER_RESULT_INDEX_SQL);
 }
 
@@ -315,6 +391,43 @@ async function ensureTableColumn(
 	const columns = await layer.exec<{ name: string }>(`PRAGMA table_info(${table})`);
 	if (!columns.some((col) => col.name === column)) {
 		await layer.exec(alterSQL);
+	}
+}
+
+async function ensureDuckdbBigintColumn(
+	layer: Awaited<ReturnType<typeof getQueryLayer>>,
+	opts: {
+		table: string;
+		column: string;
+		backupTable: string;
+		dropIndexes: string[];
+		recreateTableSql: string;
+		columnsToCopy: string[];
+		selectExpressions?: string[];
+	}
+) {
+	if (layer.engine !== 'duckdb') return;
+
+	const columns = await layer.exec<{ name: string; type?: string }>(`PRAGMA table_info(${opts.table})`);
+	const target = columns.find((col) => col.name === opts.column);
+	if (!target) return;
+
+	if (typeof target.type === 'string' && target.type.toUpperCase() === 'BIGINT') return;
+
+	for (const idx of opts.dropIndexes) {
+		await layer.exec(`DROP INDEX IF EXISTS ${idx}`);
+	}
+
+	try {
+		await layer.exec(`ALTER TABLE ${opts.table} ALTER COLUMN ${opts.column} SET DATA TYPE BIGINT`);
+	} catch (error) {
+		console.warn(`[StateRepo] 无法升级 ${opts.table}.${opts.column} 为 BIGINT，尝试重建表`, error);
+		const cols = opts.columnsToCopy.join(', ');
+		const select = (opts.selectExpressions ?? opts.columnsToCopy).join(', ');
+		await layer.exec(`ALTER TABLE ${opts.table} RENAME TO ${opts.backupTable}`);
+		await layer.exec(opts.recreateTableSql);
+		await layer.exec(`INSERT INTO ${opts.table} (${cols}) SELECT ${select} FROM ${opts.backupTable}`);
+		await layer.exec(`DROP TABLE ${opts.backupTable}`);
 	}
 }
 

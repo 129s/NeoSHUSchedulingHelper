@@ -12,22 +12,24 @@
   );
   --app-font-family-mono: var(--token-font-family-mono, 'SF Mono', 'JetBrains Mono', Consolas, monospace);
 
-  --app-text-xs: var(--token-font-label-small-size, 0.75rem);
-  --app-text-sm: var(--token-font-body-medium-size, 0.875rem);
-  --app-text-md: var(--token-font-body-large-size, 1rem);
-  --app-text-lg: var(--token-font-title-medium-size, 1.125rem);
+  --app-text-scale: 0.92;
+  --app-text-xs: calc(var(--token-font-label-small-size, 0.75rem) * var(--app-text-scale));
+  --app-text-sm: calc(var(--token-font-body-medium-size, 0.875rem) * var(--app-text-scale));
+  --app-text-md: calc(var(--token-font-body-large-size, 1rem) * var(--app-text-scale));
+  --app-text-lg: calc(var(--token-font-title-medium-size, 1.125rem) * var(--app-text-scale));
   --app-letter-spacing-tight: -0.01em;
   --app-letter-spacing-normal: 0;
 
   /* Spacing scale */
+  --app-space-scale: 0.9;
   --app-space-0: var(--token-space-0, 0);
-  --app-space-1: var(--token-space-1, 0.25rem);
-  --app-space-2: var(--token-space-2, 0.5rem);
-  --app-space-3: var(--token-space-3, 0.75rem);
-  --app-space-4: var(--token-space-4, 1rem);
-  --app-space-5: var(--token-space-5, 1.25rem);
-  --app-space-6: var(--token-space-6, 1.5rem);
-  --app-space-8: var(--token-space-8, 2rem);
+  --app-space-1: calc(var(--token-space-1, 0.25rem) * var(--app-space-scale));
+  --app-space-2: calc(var(--token-space-2, 0.5rem) * var(--app-space-scale));
+  --app-space-3: calc(var(--token-space-3, 0.75rem) * var(--app-space-scale));
+  --app-space-4: calc(var(--token-space-4, 1rem) * var(--app-space-scale));
+  --app-space-5: calc(var(--token-space-5, 1.25rem) * var(--app-space-scale));
+  --app-space-6: calc(var(--token-space-6, 1.5rem) * var(--app-space-scale));
+  --app-space-8: calc(var(--token-space-8, 2rem) * var(--app-space-scale));
 
   /* Radius */
   --app-radius-xs: var(--token-radius-xs, 2px);
@@ -41,6 +43,10 @@
   --app-shadow-none: none;
   --app-shadow-soft: var(--token-elevation-1, 0 1px 2px rgba(15, 18, 35, 0.08));
   --app-shadow-hard: var(--token-elevation-3, 0 12px 30px rgba(15, 18, 35, 0.14));
+  --app-elevation-hover-translate-y: -2px;
+  --app-elevation-active-translate-y: -1px;
+  --app-elevation-hover-filter: drop-shadow(var(--app-shadow-hard)) saturate(1.04) brightness(1.03);
+  --app-elevation-active-filter: drop-shadow(var(--app-shadow-soft)) saturate(1.02) brightness(1.01);
 
   /* Colors (semantic) */
   --app-color-bg: var(--token-color-surface, #ffffff);
@@ -65,6 +71,10 @@
   --app-color-chip-bg: color-mix(in srgb, var(--app-color-bg-elevated) 95%, var(--app-color-fg) 5%);
   --app-color-chip-border: var(--app-color-border-subtle);
   --app-color-chip-fg: var(--app-color-fg);
+
+  --app-color-hover-highlight: color-mix(in srgb, var(--app-color-primary) 10%, transparent);
+  --app-color-focus-ring: color-mix(in srgb, var(--app-color-primary) 60%, transparent);
+  --app-color-focus-ring-inverse: color-mix(in srgb, var(--app-color-bg) 30%, transparent);
 
   --app-color-ring-healthy: color-mix(in srgb, var(--app-color-success) 85%, white);
   --app-color-ring-warning: color-mix(in srgb, var(--app-color-warning) 85%, white);

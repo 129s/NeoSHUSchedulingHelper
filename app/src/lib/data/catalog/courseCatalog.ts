@@ -12,13 +12,25 @@ import type {
 import type { RawCourseSnapshot } from '../InsaneCourseParser';
 import { resolveParser } from '../parsers';
 import { getDatasetConfig } from '../../../config/dataset';
-import rawSnapshot from '../../../../../crawler/data/terms/2025-16.json';
 import type { CourseTaxonomyInfo } from '../../types/taxonomy';
 import { resolveCourseTaxonomy } from './courseTaxonomy';
 import { initializeTaxonomyRegistry } from '../taxonomy/taxonomyRegistry';
 import { t } from '../../i18n/index.ts';
 
 const datasetConfig = getDatasetConfig();
+
+const RAW_SNAPSHOT_MODULES = import.meta.glob('../../../../../crawler/data/terms/*.json', {
+	eager: true,
+	import: 'default'
+});
+
+function resolveRawSnapshot(termId: string): RawCourseSnapshot {
+	const suffix = `/crawler/data/terms/${termId}.json`;
+	for (const [path, value] of Object.entries(RAW_SNAPSHOT_MODULES)) {
+		if (path.endsWith(suffix)) return value as RawCourseSnapshot;
+	}
+	throw new Error(`未找到学期 ${termId} 的原始快照文件（期望路径后缀：${suffix}）`);
+}
 
 function getWeekdayLabels() {
 	return [
@@ -73,6 +85,7 @@ export interface CourseCatalogEntry {
 	teachingLanguage?: CourseRecord['teachingLanguage'];
 	specialType?: string[];
 	specialTags?: string[];
+	specialFilterTags: string[];
 	specialData1?: string;
 	specialData2?: string;
 	specialData3?: string;
@@ -92,7 +105,7 @@ export interface CourseCatalogEntry {
 	classStatus?: string;
 }
 
-const snapshot = rawSnapshot as RawCourseSnapshot;
+const snapshot = resolveRawSnapshot(datasetConfig.termId);
 const parser = resolveParser(snapshot.termName);
 
 if (!parser) {
@@ -105,16 +118,11 @@ export const courseDataset = insaneData;
 export const courseCatalog: CourseCatalogEntry[] = buildCatalog(insaneData);
 export const courseCatalogMap = new Map(courseCatalog.map((entry) => [entry.id, entry]));
 export const datasetMeta = insaneData.meta;
+export const datasetParser = { id: parser.id, version: parser.version };
 initializeTaxonomyRegistry(datasetMeta.semester, courseCatalog);
 
-const DEFAULT_SEED_COUNT = 3;
-const fallbackSeeds =
-	datasetConfig.seedSelectionIds && datasetConfig.seedSelectionIds.length > 0
-		? datasetConfig.seedSelectionIds
-		: courseCatalog.slice(0, DEFAULT_SEED_COUNT).map((entry) => entry.id);
-
 export const seedSelectedCourseIds = new Set(
-	fallbackSeeds.filter((id) => courseCatalogMap.has(id))
+	(datasetConfig.seedSelectionIds ?? []).filter((id) => courseCatalogMap.has(id))
 );
 
 function buildCatalog(data: InsaneCourseData): CourseCatalogEntry[] {
@@ -209,6 +217,7 @@ function createEntry({
 		teachingLanguage: course.teachingLanguage ?? '未指定',
 		specialType: course.specialType ?? [],
 		specialTags,
+		specialFilterTags: deriveSpecialFilterTags(course),
 		specialData1: specialDataSlots[0],
 		specialData2: specialDataSlots[1],
 		specialData3: specialDataSlots[2],
@@ -227,6 +236,46 @@ function createEntry({
 		timeChunks,
 		limits
 	};
+}
+
+function deriveSpecialFilterTags(course: CourseRecord): string[] {
+	if ((course.specialType ?? []).includes('sports')) return [];
+
+	const sources = new Set<string>();
+	if (course.selectionNote) sources.add(course.selectionNote);
+
+	const constraintsRaw = course.attributes?.constraintsRaw;
+	if (constraintsRaw) sources.add(constraintsRaw);
+	(course.constraints ?? []).forEach((constraint) => {
+		if (constraint.value) sources.add(constraint.value);
+	});
+
+	const tags: string[] = [];
+	const addTag = (candidate: string) => {
+		let token = candidate.trim();
+		if (!token) return;
+		token = token.replace(/[（(][^）)]*[)）]/g, '').trim();
+		if (!token) return;
+		if (/\d/.test(token)) return;
+		if (/[{}:：]/.test(token)) return;
+		if (token.includes('星期') || token.includes('周')) return;
+		if (token.length > 24) return;
+		if (!tags.includes(token)) tags.push(token);
+	};
+
+	sources.forEach((source) => {
+		const normalized = source.replace(/；/g, ';').replace(/，/g, ',').replace(/。/g, '.');
+		const primary = normalized.split(';')[0]?.split(',')[0]?.split('.')[0]?.trim();
+		if (primary) addTag(primary);
+
+		normalized
+			.split(/[;,.\s]+/)
+			.map((part) => part.trim())
+			.filter(Boolean)
+			.forEach(addTag);
+	});
+
+	return tags;
 }
 
 function extractWeekPattern(section: SectionEntry): WeekPattern | undefined {
@@ -332,6 +381,10 @@ function deriveLimitFlags(course: CourseRecord): CourseLimitFlags {
 		.filter(Boolean)
 		.forEach(value => phrases.add(value));
 
+	if (course.selectionNote) phrases.add(course.selectionNote);
+	if (course.teachingMode) phrases.add(course.teachingMode);
+	if (course.classStatus) phrases.add(course.classStatus);
+
 	if (course.vacancy <= 0) {
 		phrases.add(t('courseCatalog.courseFull'));
 	}
@@ -339,9 +392,9 @@ function deriveLimitFlags(course: CourseRecord): CourseLimitFlags {
 	const mergedText = Array.from(phrases).join(';');
 	return {
 		capacityFull: phrases.has('人数已满') || course.vacancy <= 0,
-		selectionForbidden: /禁止选课|不可选课|暂不可选/.test(mergedText),
+		selectionForbidden: /禁止选课|不可选课|暂不可选|不开放选课|不开课|停开/.test(mergedText),
 		dropForbidden: /禁止退课|不可退课/.test(mergedText),
-		locationClosed: /地点不开|场地未开放|未开放/.test(mergedText),
-		classClosed: /停/.test(course.classStatus ?? course.attributes?.classStatus ?? '')
+		locationClosed: /地点不开|场地未开放|场地不开|地点未开放|未开放/.test(mergedText),
+		classClosed: /(停开|停课|暂停|停)/.test(course.classStatus ?? course.attributes?.classStatus ?? '')
 	};
 }

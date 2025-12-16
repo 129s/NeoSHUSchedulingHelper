@@ -8,7 +8,6 @@
 	import SyncPanel from '$lib/apps/SyncPanel.svelte';
 	import SettingsPanel from '$lib/apps/SettingsPanel.svelte';
 	import { translator } from '$lib/i18n';
-	import '$lib/styles/components/wip-gallery.scss';
 
 	export let heading: string | null = null;
 	export let description: string | null = null;
@@ -32,20 +31,24 @@
 	];
 </script>
 
-<section class="wip-gallery">
-	<header>
-		<h2>{resolvedHeading}</h2>
-		<p>{resolvedDescription}</p>
+<section class="wip-gallery flex flex-col gap-6">
+	<header class="space-y-2">
+		<h2 class="text-[var(--app-text-lg)] font-semibold text-[var(--app-color-fg)]">{resolvedHeading}</h2>
+		<p class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{resolvedDescription}</p>
 	</header>
 
-	<div class="gallery-grid" role="list">
+	<div class="gallery-grid grid gap-6 md:grid-cols-2 xl:grid-cols-3" role="list">
 		{#each apps as app (app.id)}
-			<article class="gallery-card" role="listitem" aria-label={t('wip.gallery.previewAria').replace('{title}', app.title)}>
-				<header>
-					<h3>{app.title}</h3>
-					<p>{t(app.descriptionKey)}</p>
+			<article
+				class="gallery-card flex flex-col gap-3 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-4 shadow-[var(--app-shadow-soft)]"
+				role="listitem"
+				aria-label={t('wip.gallery.previewAria').replace('{title}', app.title)}
+			>
+				<header class="space-y-1">
+					<h3 class="text-[var(--app-text-md)] font-semibold text-[var(--app-color-fg)]">{app.title}</h3>
+					<p class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t(app.descriptionKey)}</p>
 				</header>
-				<div class="panel-preview">
+				<div class="panel-preview flex min-h-[240px] flex-1 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-2">
 					<svelte:component this={app.component} />
 				</div>
 			</article>

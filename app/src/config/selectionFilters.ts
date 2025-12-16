@@ -64,7 +64,7 @@ const DEFAULT_SELECTION_FILTERS: SelectionFiltersConfig = {
 		selectionForbidden: {
 			label: t('config.limitRules.selectionForbidden'),
 			description: t('config.limitRules.selectionForbiddenDesc'),
-			defaultMode: 'default',
+			defaultMode: 'exclude',
 			availableModes: DEFAULT_LIMIT_MODES
 		},
 		dropForbidden: {
@@ -76,7 +76,7 @@ const DEFAULT_SELECTION_FILTERS: SelectionFiltersConfig = {
 		locationClosed: {
 			label: t('config.limitRules.locationClosed'),
 			description: t('config.limitRules.locationClosedDesc'),
-			defaultMode: 'default',
+			defaultMode: 'exclude',
 			availableModes: DEFAULT_LIMIT_MODES
 		},
 		classClosed: {

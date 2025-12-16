@@ -1,7 +1,8 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
-import { translator } from '$lib/i18n';
+	import AppButton from '$lib/primitives/AppButton.svelte';
+	import { translator } from '$lib/i18n';
 
 export let currentPage: number;
 export let totalPages: number;
@@ -31,28 +32,20 @@ function goTo(page: number) {
 </script>
 
 <div class="flex flex-wrap items-center gap-2 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">
-	<button
-		type="button"
-		class="inline-flex items-center rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]"
-		on:click={() => onPageChange(currentPage - 1)}
-		disabled={currentPage <= 1}
-	>
+	<AppButton variant="secondary" size="sm" on:click={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}>
 		{t('pagination.prev')}
-	</button>
+	</AppButton>
 
 	<div class="flex items-center gap-1">
 		{#each Array.from({ length: neighborRange.end - neighborRange.start + 1 }, (_, i) => neighborRange.start + i) as page}
-			<button
-				type="button"
-				class={`inline-flex min-w-[36px] items-center justify-center rounded-[var(--app-radius-md)] border px-3 py-2 text-[var(--app-text-sm)] transition-colors ${
-					page === currentPage
-						? 'border-transparent bg-[var(--app-color-primary)] text-[var(--app-color-on-primary)] font-medium'
-						: 'border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]'
-				}`}
+			<AppButton
+				variant={page === currentPage ? 'primary' : 'secondary'}
+				size="sm"
+				class="min-w-[36px] px-3"
 				on:click={() => goTo(page)}
 			>
 				{page}
-			</button>
+			</AppButton>
 		{/each}
 	</div>
 
@@ -70,12 +63,13 @@ function goTo(page: number) {
 
 	<span class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{formatTotalPages(totalPages)}</span>
 
-	<button
-		type="button"
-		class="inline-flex items-center rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)] ml-auto"
+	<AppButton
+		variant="secondary"
+		size="sm"
+		class="ml-auto"
 		on:click={() => onPageChange(currentPage + 1)}
 		disabled={currentPage >= totalPages}
 	>
 		{t('pagination.next')}
-	</button>
+	</AppButton>
 </div>

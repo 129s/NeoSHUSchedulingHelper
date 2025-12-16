@@ -2,6 +2,8 @@ export const zhCN = {
   settings: {
     title: '界面设置',
     subtitle: '切换 Dock 主题 / 全局配置。',
+    displaySection: '显示',
+    behaviorSection: '行为',
     theme: '主题',
     collapseLabel: '课程折叠视图',
     collapseDesc: '控制“全部课程”等面板是否按课程名折叠显示。',
@@ -38,6 +40,48 @@ export const zhCN = {
     optional: '可选',
     selectPlaceholder: '请选择'
   },
+  dialogs: {
+    datasetResolve: {
+      title: '课程分组已变化',
+      summary: '课程分组候选发生变化。已移除无法解析的课程组：待选 {wishlist} 个，求解器 {staging} 个。fatal 次数：{fatal} / 2。',
+      downgraded: '已自动降级为“逐条班次”模式（sectionOnly）。',
+      hint: '建议先“在线更新数据集并重试”；若仍异常，可切换为班次模式（sectionOnly）。详情可在“操作日志”查看。',
+      reload: '在线更新数据集并重试',
+      switchSectionOnly: '切换为班次模式',
+      ack: '继续使用'
+    },
+    solverInvalid: {
+      title: '约束无效，无法求解',
+      summary: '发现 {count} 条无效约束。请修正后再运行，或自动删除无效约束。',
+      lockLabel: '硬约束 {id}',
+      softLabel: '软约束 {id}',
+      reasons: {
+        'lock.courseHashMissing': '缺少 courseHash。',
+        'lock.sectionIdMissing': '缺少 sectionId。',
+        'lock.teacherIdMissing': '缺少 teacherId。',
+        'lock.timeWindowMissing': '缺少时间窗口。',
+        'lock.timeWindowRange': '时间范围无效（start >= end）。',
+        'lock.groupEmpty': '分组候选为空。',
+        'soft.weightInvalid': '权重无效（必须 > 0）。',
+        'soft.campusMissing': '缺少校区参数。'
+      },
+      close: '关闭',
+      autoDelete: '自动删除无效约束'
+    },
+    selectionClear: {
+      title: '清空待选将导致求解器约束失效',
+      summary: '清空待选会使 {count} 条硬约束失效。',
+      hint: '继续将同时删除这些约束并清空待选。',
+      cancel: '取消',
+      confirm: '删除约束并清空待选'
+    },
+    groupPick: {
+      title: '请选择班次',
+      hint: '组选课必须落到具体班次（教务只接受班次）。',
+      cancel: '取消',
+      confirm: '选择该班次'
+    }
+  },
   lists: {
     countLabel: '共 {count} 项',
     pinFilters: '锁定筛选区',
@@ -55,23 +99,11 @@ export const zhCN = {
       settings: '设置'
     },
     workspace: {
-      loadErrorTitle: '无法加载 Dock 布局',
-      loadErrorHint: '刷新页面或查看控制台详细信息。',
-      fallbackMessage: 'Dock 布局加载失败，请刷新页面。',
-      modeDock: 'Dock 布局',
-      modeFallback: '标签布局',
-      toggleToDock: '切换到 Dock 布局',
-      toggleToFallback: '切换到标签布局',
-      toggleReset: '清除偏好',
-      narrowMessage: '屏幕宽度不足，已切换到标签布局以保证可用性。',
-      manualFallbackHint: '当前处于标签布局，可随时切回 Dock 布局。',
+      loadErrorTitle: '工作区加载失败',
+      loadErrorHint: '请刷新页面或查看控制台日志。',
+      narrowMessage: '屏幕宽度不足，已暂时切换为标签布局。',
       fallbackTabsAria: '备用工作区面板列表',
-      compactSelectLabel: '选择要查看的面板',
-      reason: {
-        auto: '自动（屏宽不足）',
-        error: 'Dock 暂不可用',
-        user: '手动切换'
-      }
+      compactSelectLabel: '选择要查看的面板'
     }
   },
   calendar: {
@@ -84,15 +116,21 @@ export const zhCN = {
     weekdaysShort: ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   },
   panels: {
-    common: {
-      conflictHard: '硬冲突',
-      conflictTime: '时间冲突',
-      conflictDivider: ' · ',
-      conflictListSeparator: '；'
-    },
-    allCourses: {
-      title: '全部课程',
-      description: '展示所有候选课程，可快速加入待选。',
+	    common: {
+	      conflictHard: '硬冲突',
+	      conflictTime: '时间冲突',
+	      conflictDivider: ' · ',
+	      conflictListSeparator: '；',
+	      availability: {
+	        requiresReselect: '可能需要重选已选课程。',
+	        policyBlocksReselect: '当前策略仅允许“无需重排”的课程。',
+	        impossible: '与已选课程存在冲突，无法选择。',
+	        groupNoSelectable: '该组内暂无可选班次。'
+	      }
+	    },
+	    allCourses: {
+	      title: '全部课程',
+	      description: '展示所有候选课程，可快速加入待选。',
       empty: '暂无课程',
       variantCountLabel: '{count} 个班次',
       expandHint: '展开/收起课程组',
@@ -136,7 +174,8 @@ export const zhCN = {
       priority: '优先级',
       selectedCount: '已选 {count}',
       cancel: '取消',
-      apply: '添加',
+      apply: '应用',
+      undoApply: '撤销应用',
       timePreset: '时间预设{label}',
       timePresetOptions: ['第1节', '11-12', '上午', '下午', '晚间'],
       templateNamePlaceholder: '模板名称',
@@ -145,6 +184,15 @@ export const zhCN = {
       templateValueAria: '时间模板内容',
       saveTemplate: '保存模板',
       deleteTemplate: '删除',
+      timeExpressionLabel: '时间表达式',
+      timeExpressionDesc: '用于自定义软约束的备注/表达式（当前版本不会解析为可计算规则）。',
+      timeExpressionToolsShow: '展开时间模板与帮助',
+      timeExpressionToolsHide: '收起时间模板与帮助',
+      timeExpressionSaved: '已保存模板',
+      timeExpressionHelpTitle: '时间表达式提示',
+      timeExpressionHelpLine1: '可直接输入备注；建议使用“周几 + 节次范围”的格式（如：周一 1-2）。',
+      timeExpressionHelpLine2: '“时间预设/模板”仅用于快速填充输入框，提交后会作为软约束描述保存。',
+      timeExpressionHelpLine3: '需要真实可计算的时间规则时，再扩展求解器语义层（traits 已预留）。',
       pendingNotice: '已选中课程尚未添加约束，请先添加为硬/软约束再求解。',
       addAndContinue: '添加并继续',
       ignore: '忽略',
@@ -233,6 +281,7 @@ export const zhCN = {
       unsatConflictLabel: '不可调冲突',
       diagnosticAdjustable: '可调冲突',
       diagnosticUnadjustable: '不可调冲突',
+      diagnosticSoft: '软约束未满足',
       softDiagnosticsTitle: '软约束未满足',
       softDiagnosticsReason: '未满足软约束',
       planAdd: '添加 {label}',
@@ -245,6 +294,7 @@ export const zhCN = {
       description: '记录约束修改与求解行为，可对部分记录进行回滚。',
       empty: '尚无日志记录。',
       rollback: '回滚',
+      undo: '撤销',
       rollbackFailure: '回滚失败',
       selectionRestored: '已恢复选课：已选 {selected} 门，待选 {wishlist} 门',
       errors: {
@@ -290,6 +340,107 @@ export const zhCN = {
         unknownCourse: '课程'
       }
     },
+    jwxt: {
+      title: '教务系统（JWXT）',
+      description: '登录教务系统，支持同步与规划选课；推送到教务前会展示 diff 并二次确认。',
+      subtitle: '对接真实教务系统（需要登录）',
+      connectionTitle: '连接与登录',
+      connectionDescription: '登录后可从教务系统同步已选课程，也可将本地选课状态推送到教务系统。',
+      refresh: '刷新',
+      ping: '测试连接',
+      login: '登录',
+      logout: '退出登录',
+      loginHint: '密码仅发送到本地后端用于登录教务系统，不会在浏览器中持久化保存。',
+      userIdLabel: '学号',
+      passwordLabel: '密码',
+      syncTitle: '同步',
+      syncDescription: '从教务系统拉取已选状态，或将本地状态推送到教务系统。',
+      syncFrom: '从教务同步',
+      pushTo: '推送到教务',
+      ttlLabel: '确认前检查（TTL）',
+      ttl0: '0（每次确认前重新检查，推荐）',
+      ttl120: '120 秒（120s 内跳过检查）',
+      autoSync: '自动同步（仅拉取）',
+      autoSyncInterval: '间隔',
+      autoPush: '自动推送（会弹窗确认）',
+      autoPushHint: '已开启自动推送：本地已选发生变化时会自动弹窗提示 diff。',
+      autoPushMutedUntil: '自动推送提醒已静默至 {time}',
+      localCounts: '本地状态：已选 {selected} 门，待选 {wishlist} 门',
+      lastSyncAt: '上次同步：{time}',
+      lastPushAt: '上次推送：{time}',
+      confirmHint: '任何可能影响教务系统的操作都会弹窗确认。',
+      enrollTitle: '搜索 / 选课 / 退课（规划）',
+      enrollDescription: '搜索教务课程并映射到本地数据后，可规划已选/待选/退课；最后通过“推送到教务”执行。',
+      searchLabel: '搜索',
+      searchPlaceholder: '课程号 / 课程名 / 教师号',
+      search: '搜索',
+      enroll: '选课',
+      drop: '退课',
+      dropNow: '立即退课',
+      planSelect: '规划已选',
+      planDeselect: '取消已选',
+      planWishlistAdd: '加入待选',
+      planWishlistRemove: '移出待选',
+      planDrop: '规划退课',
+      planUnavailable: '无法规划',
+      planUnavailableHint: '未能映射到本地课程数据（仅可作为参考）',
+      remoteSelectedTitle: '教务已选',
+      remoteSelectedDescription: '来自教务系统的“已选”列表（可规划退课后再推送）。',
+      remoteSelectedNoMapping: '未能映射到本地课程数据',
+      confirm: {
+        cancel: '取消',
+        close: '关闭',
+        autoPushTitle: '检测到已选变更（自动推送）',
+        autoPushBody: '将对教务系统执行：选课 {enroll}，退课 {drop}。确认继续？',
+        mute2m: '2 分钟内不再提醒（自动确认）',
+        pushTitle: '确认推送到教务系统',
+        pushBody: '此操作将尝试把本地选课状态推送到教务系统：已选 {selected} 门，待选 {wishlist} 门。确认继续？',
+        pushPreviewBody: '此操作将对教务系统执行：选课 {enroll}，退课 {drop}。确认继续？',
+        remoteChangedBody: '教务已变化，已重新计算差异。需要再次确认。',
+        pushConfirm: '确认推送',
+        pushDiffEnrollTitle: '将选课',
+        pushDiffDropTitle: '将退课',
+        pushDiffEmpty: '无变更',
+        pushDiffMore: '…还有 {count} 条',
+        enrollTitle: '确认选课',
+        enrollBody: '此操作将向教务系统提交“选课”请求：{course}。可能会占用名额或产生选课结果变化。确认继续？',
+        enrollConfirm: '确认选课',
+        dropTitle: '确认退课',
+        dropBody: '此操作将向教务系统提交“退课”请求：{course}。可能会影响课表与学分。确认继续？',
+        dropConfirm: '确认退课'
+      },
+      statuses: {
+        loading: '正在读取教务系统状态...',
+        backendMissing: 'JWXT 对接尚未接入（后端未实现）。',
+        loggedIn: '已登录教务系统。',
+        loggedOut: '未登录教务系统。',
+        accountLabel: '帐号：{userId}',
+        statusFailed: '状态读取失败：{error}',
+        pinging: '正在测试连接...',
+        pingOk: '连接测试完成（HTTP {status}）',
+        pingFailed: '连接测试失败：{error}',
+        missingCredentials: '请输入学号与密码',
+        loggingIn: '登录中...',
+        loginSuccess: '登录成功',
+        loginFailed: '登录失败：{error}',
+        logoutFailed: '退出失败：{error}',
+        requireLogin: '请先登录教务系统',
+        syncing: '同步中...',
+        syncSuccess: '同步成功：已选 {selected} 条，待选 {wishlist} 条',
+        syncFailed: '同步失败：{error}',
+        pushing: '推送中...',
+        pushSuccess: '推送请求已发送',
+        pushFailed: '推送失败：{error}',
+        pushSummary: '推送结果：已选 {enroll}，退课 {drop}',
+        pushDetails: '详细结果：{count} 条',
+        searching: '搜索中...',
+        searchEmpty: '请输入搜索关键词',
+        searchFailed: '搜索失败：{error}',
+        searchSuccess: '搜索完成：{count} 条结果',
+        enrollSuccess: '选课请求已提交',
+        dropSuccess: '退课请求已提交'
+      }
+    },
     sync: {
       title: '导入 / 导出 & 同步',
       currentTerm: '当前学期：{term}',
@@ -322,7 +473,14 @@ export const zhCN = {
       notePlaceholder: '描述此次同步，如 2025 春测试',
       publicLabel: '公开 Gist（默认私有）',
       uploadButton: '上传到 Gist',
+      importReplaceButton: '从 Gist 导入覆盖',
       githubMissing: '未配置 GitHub Client ID，无法发起 GitHub 登录。',
+      confirm: {
+        importTitle: '确认导入并覆盖',
+        importBody: '将从 Gist {gistId} 下载 term-state.base64 并覆盖本地 TermState。此操作不可撤销，确认继续？',
+        cancel: '取消',
+        importConfirm: '确认导入'
+      },
       statuses: {
         generated: '已生成 Base64 快照，可复制保存或贴到 Issue/Gist。',
         exportFailed: '导出失败：{error}',
@@ -334,9 +492,15 @@ export const zhCN = {
         importFailed: '导入失败：{error}',
         githubLoginSuccess: 'GitHub 登录成功',
         requireLogin: '请先登录 GitHub',
+        termStateMissing: 'TermState 未加载，请稍后重试',
         syncing: '正在生成快照并同步...',
         syncSuccess: '同步成功：{url}',
-        syncFailed: '同步失败：{error}'
+        syncFailed: '同步失败：{error}',
+        syncDone: '同步完成',
+        gistIdRequired: '请输入 Gist ID',
+        gistImporting: '正在从 Gist 导入并覆盖...',
+        gistImportSuccess: '导入成功：已覆盖本地 TermState',
+        gistImportDone: '导入完成'
       }
     }
   },
@@ -375,7 +539,8 @@ export const zhCN = {
     campus: '校区',
     college: '学院',
     major: '专业',
-    specialFilter: '特殊课程',
+    specialFilter: '体育课',
+    specialTagsLabel: '特殊标签（动态）',
     specialFilterOptions: {
       all: '不过滤',
       sportsOnly: '仅体育',
@@ -385,11 +550,23 @@ export const zhCN = {
     minPlaceholder: '最小',
     maxPlaceholder: '最大',
     capacityMin: '容量下限',
-    languageMode: '教学语言/模式',
+    languageMode: '教学语言/异常课程',
     noLimit: '不限',
     teachingLanguageLabel: '教学语言',
-    teachingModeLabel: '教学模式',
+    teachingModeLabel: '异常课程',
     modeOtherPlaceholder: '其他教学模式（文本包含）',
+    abnormalFilterOptions: {
+      defaultHidden: '默认隐藏（推荐）',
+      showAll: '显示全部（含异常）',
+      onlyAbnormal: '只看异常课程',
+      mixed: '混合状态'
+    },
+    abnormalFilterSummaries: {
+      defaultHidden: '默认隐藏异常课程',
+      showAll: '当前显示全部课程（含异常）',
+      onlyAbnormal: '当前只显示异常课程',
+      mixed: '异常筛选处于混合状态'
+    },
     weekFilters: '周次筛选',
     weekParityLabel: '单双周',
     weekSpanLabel: '上/下半',
@@ -420,8 +597,12 @@ export const zhCN = {
     listSeparator: '，'
   },
   pagination: {
+    first: '首页',
     prev: '上一页',
-    next: '下一页'
+    next: '下一页',
+    last: '末页',
+    jump: '跳转',
+    totalPages: '共 {count} 页'
   },
   courseCard: {
     markSelection: '标记必选/排除',
@@ -435,6 +616,11 @@ export const zhCN = {
     teacherPending: '教师待定',
     timeLabel: '时间',
     infoLabel: '信息',
+    courseCodeLabel: '课程号',
+    courseCodePending: '课程号待定',
+    creditLabel: '学分',
+    creditValue: '{value} 学分',
+    creditPending: '学分未定',
     noTime: '暂无时间',
     locationPending: '待排教室'
   },
@@ -483,6 +669,12 @@ export const zhCN = {
       capacityFullDesc: '限制是否显示已满课程',
       selectionForbidden: '禁止选课',
       selectionForbiddenDesc: '限制是否显示禁止选课的课程',
+      dropForbidden: '禁止退课',
+      dropForbiddenDesc: '限制是否显示禁止退课的课程',
+      locationClosed: '场地未开放',
+      locationClosedDesc: '限制是否显示场地/地点未开放的课程',
+      classClosed: '停开',
+      classClosedDesc: '限制是否显示停开/暂停的课程',
       vacancyLimited: '余量紧张',
       vacancyLimitedDesc: '标记课程容量状态是否紧张'
     },

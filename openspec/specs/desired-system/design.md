@@ -24,6 +24,26 @@
 
 所有持久化策略与 `openspec/specs/data-pipeline/design.md` 的表格保持一致，便于多端同步。
 
+### 2.2 依赖与级联（待选/已选 → solver inputs）
+
+solver inputs（Desired/Locks/SoftConstraints）对 Selection 有强依赖：用户对待选/已选的“单向加入/移除”会改变 solver 的候选池与可解空间，因此必须显式建模依赖、级联与用户提示。
+
+#### 候选池（Candidate Pool）
+- 默认定义：`candidatePool = wishlistCourseIds ∪ selectedCourseIds`。
+- Desired/Locks/SoftConstraints 中出现的 `courseHash/sectionId/...` MUST 属于候选池，且必须能在当前 `termId` 的课程数据集中解析。
+
+#### Orphan（引用失效隔离区）
+- 若某条 Desired/Lock/SoftConstraint 引用无法解析（数据集变更、课程被移出候选池等），该条目必须进入 orphan：
+  - orphan 条目 **不得参与求解**、不得参与“推送到教务”等云端操作；
+  - UI 必须提示，并提供“一键清理/重新映射”入口。
+
+#### 删除待选/已选时的级联策略（必须提示用户）
+当一个课程从候选池被移除（例如从 wishlist 删除且该课程不在 selected），任何引用该课程的 solver inputs 都必须触发用户提示，并提供默认路径：
+1) **默认：自动级联删除**这些依赖项（Desired/Locks/SoftConstraints），并将“selection 变更 + 级联清理”作为同一原子动作记录到 Action Log（可回滚）。
+2) **备选：保留为 orphan**（但必须阻止其进入 solver/push/sync apply）。
+
+统一状态机与不变量的合同入口见 `openspec/changes/UNDO-SM-1/design.md`。
+
 1. **DesiredCourse**
    ```ts
    interface DesiredCourse {

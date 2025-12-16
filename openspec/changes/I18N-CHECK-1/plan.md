@@ -2,9 +2,9 @@
 
 ## Tasks
 1. Finalize proposal/design + PLAN entry (this doc). ✅
-2. Refactor `scripts/check_i18n.py` into new CLI (compare + scan). ☐
-3. Create developer memo spec + AGENTS.md update referencing workflow. ☐
-4. Document verification in apply.md (`scripts/check_i18n.py all`, etc.). ☐
+2. Refactor `scripts/check_i18n.py` into new CLI (compare + scan). ✅
+3. Create developer memo spec + AGENTS.md update referencing workflow. ✅
+4. Document verification in apply.md (`scripts/check_i18n.py all`, etc.). ✅
 
 ## Decisions / Notes
 - Locale parsing implemented via regex + JSON conversion; if it fails we instruct devs to keep locale files as simple objects (documented in memo).

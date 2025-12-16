@@ -4,7 +4,7 @@
 Gemini MCP follow-up UI backlog item UI-FIX-5 tracked in `PLAN.md` aggregates the second batch of issues noted under MCP task MCP-2 (memory: `spec://mcp-tool/gemini-visual-analysis`). These regressions block solver usability inside the Dock workspace and violate the shared UI template contract (`spec://cluster/ui-templates#chunk-01..05`):
 
 1. **Solver controls clipped (P0).** The "添加硬约束" button inside `SolverPanel.svelte` truncates because the host toolbar does not respect clamp-based widths nor wrap buttons on small dock columns.
-2. **Pagination footer cropped (P0).** The shared pagination footer in `AllCoursesPanel.svelte`/`list-surface.scss` collides with the Dock layout, so prev/next controls disappear below the fold.
+2. **Pagination footer cropped (P0).** The shared pagination footer in `AllCoursesPanel.svelte`/`ListSurface.svelte` collides with the Dock layout, so prev/next controls disappear below the fold.
 3. **Time preset inputs misaligned (P1).** Solver time preset fields rely on ad-hoc CSS/non-grid markup, causing jagged alignment that contradicts `spec://cluster/ui-templates#chunk-02` spacing rules.
 4. **Course title truncation lacks affordance (P1).** `CourseCard.svelte` cuts long titles without tooltip fallback; this fails the accessibility guidance under `spec://cluster/ui-templates#chunk-07`.
 5. **"加入待选" buttons over-compress text (P1).** Button layout squeezes characters, again violating the shared token spacing contract.

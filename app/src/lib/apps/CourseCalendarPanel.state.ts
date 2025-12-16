@@ -1,5 +1,5 @@
 import { derived, writable, get } from 'svelte/store';
-import { t, dictionary } from '../i18n';
+import { dictionary } from '../i18n';
 import type { Dictionary } from '../i18n';
 import type { CourseCatalogEntry } from '../data/catalog/courseCatalog';
 import { courseCatalog, courseCatalogMap, datasetMeta } from '../data/catalog/courseCatalog';
@@ -8,6 +8,7 @@ import { activateHover, clearHover, hoveredCourse } from '../stores/courseHover'
 import { adjustHslColor, colorFromHash } from '../utils/color';
 import { measureText } from '../utils/canvas';
 import { showWeekends } from '../stores/paginationSettings';
+import type { WeekParity, WeekSpan } from '../data/InsaneCourseData';
 
 export interface CalendarEntry {
 	key: string;
@@ -29,9 +30,22 @@ export interface CalendarEntry {
 
 const calendar = datasetMeta.calendarConfig;
 export const periods = [...(calendar.periods ?? [])];
-const BASE_DAY_MIN = 168;
-const COMPACT_DAY_MIN = 132;
-const TIME_COLUMN_MIN = 88;
+const DAY_BASE_MIN = 58;
+const DAY_COMPACT_MIN = 52;
+const TIME_COLUMN_MIN = 44;
+const TIME_COLUMN_MAX = 96;
+
+const WEEK_SPAN: Record<'full' | 'upper' | 'lower', WeekSpan> = {
+	full: '全学期',
+	upper: '上半学期',
+	lower: '下半学期'
+};
+
+const WEEK_PARITY: Record<'all' | 'odd' | 'even', WeekParity> = {
+	all: '全部周',
+	odd: '单周',
+	even: '双周'
+};
 
 const hoveredCellKey = writable<string | null>(null);
 export const activeId = derived(hoveredCourse, ($hovered) => $hovered?.id ?? null);
@@ -71,7 +85,7 @@ export const weekdays = derived([showWeekends, dictionary], ([$show, $dict]) => 
 });
 
 function getDayMinWidth(columnCount: number) {
-	return columnCount > 5 ? COMPACT_DAY_MIN : BASE_DAY_MIN;
+	return columnCount > 5 ? DAY_COMPACT_MIN : DAY_BASE_MIN;
 }
 
 export const visibleEntries = derived(
@@ -149,12 +163,14 @@ function formatSlot(entry: CalendarEntry) {
 }
 
 export const tableStyle = derived(weekdays, ($weekdays) => {
-	const minWidth = getDayMinWidth($weekdays.length);
+	const dayMin = getDayMinWidth($weekdays.length);
 	return [
-		`--calendar-day-min:${minWidth}px`,
 		`--calendar-day-count:${$weekdays.length}`,
-		`grid-template-columns:minmax(${TIME_COLUMN_MIN}px, auto) repeat(${$weekdays.length}, minmax(var(--calendar-day-min), 1fr))`,
-		`grid-template-rows:auto repeat(${periods.length}, var(--period-height))`
+		`--calendar-day-min:${dayMin}px`,
+		`--calendar-time-min:${TIME_COLUMN_MIN}px`,
+		`--calendar-time-max:${TIME_COLUMN_MAX}px`,
+		`grid-template-columns:fit-content(clamp(var(--calendar-time-min), 12cqi, var(--calendar-time-max))) repeat(${$weekdays.length}, minmax(var(--calendar-day-min), 1fr))`,
+		`grid-template-rows:auto repeat(${periods.length}, minmax(var(--period-min), 1fr))`
 	].join(';');
 });
 
@@ -163,34 +179,34 @@ function getBaseColor(entry: CalendarEntry) {
 }
 
 export function getSpanClass(entry: CalendarEntry) {
-	if (entry.weekSpan === t('config.weekSpan.upper')) return 'span-upper';
-	if (entry.weekSpan === t('config.weekSpan.lower')) return 'span-lower';
+	if (entry.weekSpan === WEEK_SPAN.upper) return 'span-upper';
+	if (entry.weekSpan === WEEK_SPAN.lower) return 'span-lower';
 	return '';
 }
 
 export function getParityClass(entry: CalendarEntry) {
-	if (entry.weekParity === t('config.weekParity.odd')) return 'parity-odd';
-	if (entry.weekParity === t('config.weekParity.even')) return 'parity-even';
+	if (entry.weekParity === WEEK_PARITY.odd) return 'parity-odd';
+	if (entry.weekParity === WEEK_PARITY.even) return 'parity-even';
 	return '';
 }
 
 function getSpanTint(base: string, entry: CalendarEntry) {
-	if (entry.weekSpan === t('config.weekSpan.upper')) return adjustHslColor(base, { lightnessDelta: -12 });
-	if (entry.weekSpan === t('config.weekSpan.lower')) return adjustHslColor(base, { lightnessDelta: 12 });
+	if (entry.weekSpan === WEEK_SPAN.upper) return adjustHslColor(base, { lightnessDelta: -12 });
+	if (entry.weekSpan === WEEK_SPAN.lower) return adjustHslColor(base, { lightnessDelta: 12 });
 	return base;
 }
 
 function getParityTint(base: string, entry: CalendarEntry) {
-	if (entry.weekParity === t('config.weekParity.odd')) return adjustHslColor(base, { saturationDelta: 10, lightnessDelta: -6 });
-	if (entry.weekParity === t('config.weekParity.even')) return adjustHslColor(base, { saturationDelta: -12, lightnessDelta: 6 });
+	if (entry.weekParity === WEEK_PARITY.odd) return adjustHslColor(base, { saturationDelta: 10, lightnessDelta: -6 });
+	if (entry.weekParity === WEEK_PARITY.even) return adjustHslColor(base, { saturationDelta: -12, lightnessDelta: 6 });
 	return base;
 }
 
 export function getClipPath(entry: CalendarEntry): string {
-	const hasSpanUpper = entry.weekSpan === t('config.weekSpan.upper');
-	const hasSpanLower = entry.weekSpan === t('config.weekSpan.lower');
-	const hasParityOdd = entry.weekParity === t('config.weekParity.odd');
-	const hasParityEven = entry.weekParity === t('config.weekParity.even');
+	const hasSpanUpper = entry.weekSpan === WEEK_SPAN.upper;
+	const hasSpanLower = entry.weekSpan === WEEK_SPAN.lower;
+	const hasParityOdd = entry.weekParity === WEEK_PARITY.odd;
+	const hasParityEven = entry.weekParity === WEEK_PARITY.even;
 
 	if (hasSpanUpper && hasParityOdd) return 'polygon(0 0, 50% 50%, 0 100%)';
 	if (hasSpanUpper && hasParityEven) return 'polygon(0 0, 50% 50%, 100% 0)';
@@ -205,25 +221,28 @@ export function getClipPath(entry: CalendarEntry): string {
 
 export function buildBlockStyle(entry: CalendarEntry) {
 	const base = getBaseColor(entry);
+	const spanTint = getSpanTint(base, entry);
+	const parityTint = getParityTint(base, entry);
 	const clipPath = getClipPath(entry);
-	const indicator = clipPath === 'none' ? null : getIndicatorPosition(entry);
+	const indicator = getIndicatorPosition(entry);
+	const background = clipPath === 'none' ? `linear-gradient(135deg, ${spanTint}, ${parityTint})` : base;
+
 	return [
-		`--base-color:${base}`,
-		`--span-color:${getSpanTint(base, entry)}`,
-		`--parity-color:${getParityTint(base, entry)}`,
+		`--course-bg:${background}`,
+		`--course-clip-path:${clipPath}`,
+		`color:#fff`,
 		`grid-column:${entry.day + 2}`,
 		`grid-row:${entry.startPeriod + 2} / span ${entry.duration}`,
-		clipPath !== 'none' ? `clip-path:${clipPath}` : '',
-		indicator ? `--indicator-x:${indicator.x}` : '',
-		indicator ? `--indicator-y:${indicator.y}` : ''
+		`--indicator-x:${indicator.x}`,
+		`--indicator-y:${indicator.y}`
 	]
 		.filter(Boolean)
 		.join(';');
 }
 
 export function shouldShowLabel(entry: CalendarEntry) {
-	const hasSpan = entry.weekSpan !== t('config.weekSpan.full');
-	const hasParity = entry.weekParity !== t('config.weekParity.all');
+	const hasSpan = entry.weekSpan !== WEEK_SPAN.full;
+	const hasParity = entry.weekParity !== WEEK_PARITY.all;
 	if (hasSpan && hasParity) return false;
 	const columnCount = get(weekdays).length;
 	const cellWidth = getDayMinWidth(columnCount);
@@ -242,10 +261,10 @@ export function shouldShowLabel(entry: CalendarEntry) {
 }
 
 function getIndicatorPosition(entry: CalendarEntry) {
-	const spanUpper = entry.weekSpan === t('config.weekSpan.upper');
-	const spanLower = entry.weekSpan === t('config.weekSpan.lower');
-	const parityOdd = entry.weekParity === t('config.weekParity.odd');
-	const parityEven = entry.weekParity === t('config.weekParity.even');
+	const spanUpper = entry.weekSpan === WEEK_SPAN.upper;
+	const spanLower = entry.weekSpan === WEEK_SPAN.lower;
+	const parityOdd = entry.weekParity === WEEK_PARITY.odd;
+	const parityEven = entry.weekParity === WEEK_PARITY.even;
 
 	if (spanUpper && parityOdd) return { x: '34%', y: '44%' };
 	if (spanUpper && parityEven) return { x: '64%', y: '32%' };

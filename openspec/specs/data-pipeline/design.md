@@ -137,6 +137,7 @@ Hot 层可将 `InsaneCourseData` 序列化为二进制 (例如 msgpack)，初次
 | **操作日志** | 记录手动和自动调整 | `ActionLogEntry[]`（append-only 列表） | 日志条目里携带 `undo: ManualUpdate[]`、dock session id、`selectionSnapshotBase64`（对覆盖操作），payload 中记录 `solverResultId`/plan/overrideMode 等元信息，支持在 UI 中恢复“求解→预览→覆盖/撤销”状态。 |
 | **愿望/锁/软约束** | 求解输入 | `DesiredCourse[]` / `DesiredLock[]` / `SoftConstraint[]` | 都是直接罗列的 JSON 列表，字段在 `openspec/specs/desired-system/design.md`、`src/lib/data/desired/types.ts` 定义。 |
 | **求解历史** | 回放/审计 solver | `solver_result` 表（列表） | 每次求解写一行，包含 metrics、assignment base64、plan base64。 |
+| **JWXT 云端快照/操作** | 云端一致性与审计 | `jwxt_remote_snapshot`（可选）+ Action Log 的 `jwxt:*` entries | 不存储账号/密码/cookie/token；仅存 `{kch_id,jxb_id}` 列表、获取时间、以及 push diff/执行结果/补偿计划（best-effort undo）。 |
 
 - 当用户做 CRUD 操作时：
   1. 更新 matrix（已选）并生成新的 `versionBase64`；
@@ -156,10 +157,13 @@ Hot 层可将 `InsaneCourseData` 序列化为二进制 (例如 msgpack)，初次
   OAuth 回调固定为 `/api/github/callback`，授权页由 `/api/github/login` 根据 `request.url.origin` 拼装，兼容 127.0.0.1 / 线上域名。
 - **同步流程**：
   1. 本地 DB 每次变化 -> 写入 `action_log` + `selected_matrix` 表。
-  2. 触发 `scheduleSync()`：将 termId/desired/selection/actionLog/solverResults 打包成 JSON，base64 编码后写入 Gist (`state-bundle.base64`)。Action Log JSON 需要包含 `dockSessionId`、`solverResultId`、`defaultTarget`、`overrideMode`、`selectionSnapshotBase64` 等新字段，供远端重现覆盖流程。
-  3. 拉取最新云端数据时，解码 base64，再比较版本号，不一致则提示用户合并/覆盖。
+  2. 触发 `scheduleSync()`：将 termId/desired/selection/actionLog/solverResults（以及可选的 JWXT 云端快照元信息）打包成 JSON，base64 编码后写入 Gist (`state-bundle.base64`)。Action Log JSON 需要包含 `dockSessionId`、`solverResultId`、`defaultTarget`、`overrideMode`、`selectionSnapshotBase64` 等字段（以及 `jwxt:*` 的 diff/结果/补偿信息），供远端重现覆盖与云端副作用链路。
+  3. 拉取最新云端数据时，解码 base64，先执行 `validateTermStateBundle()`（不变量 + 引用完整性 + 签名策略）。校验失败必须拒绝写入（no partial writes），并返回冲突信息或进入显式 merge 流程。
+  4. 校验通过后再比较版本号/签名，不一致则提示用户合并/覆盖。
 - **离线模式**：未登录 GitHub 时，所有数据保存在本地 DB；登录后再执行一次全量同步。
 - **实现提示**：`src/lib/data/github/gistSync.ts` 负责 Gist 创建/更新 + token 认证，`syncStateBundle()` 已将 state bundle 封装为 base64 文件；未来若要“从 Gist 还原”，直接读取 `state-bundle.base64` 即可。
+
+状态机合同入口（Selection/Solver/ActionLog/Sync/Cloud）见 `openspec/changes/UNDO-SM-1/design.md`。
 
 ## 12. Term 一等公民
 

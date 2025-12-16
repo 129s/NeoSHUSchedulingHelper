@@ -24,7 +24,12 @@ export default defineConfig({
 	},
 	shortcuts: {
 		'app-panel': 'bg-[var(--app-color-bg-elevated)] rounded-[var(--app-radius-lg)]',
-		'app-card': 'bg-[var(--app-color-bg)] rounded-[var(--app-radius-md)] shadow-soft'
+		'app-card': 'bg-[var(--app-color-bg)] rounded-[var(--app-radius-md)] shadow-soft',
+		'app-elevate-soft':
+			'transform-gpu [filter:none] [transition:transform_var(--app-transition-fast),filter_var(--app-transition-fast)] hover:translate-y-[var(--app-elevation-active-translate-y)] hover:[filter:var(--app-elevation-active-filter)] focus-visible:translate-y-[var(--app-elevation-active-translate-y)] focus-visible:[filter:var(--app-elevation-active-filter)]',
+		'app-elevate-strong':
+			'transform-gpu [filter:none] [transition:transform_var(--app-transition-medium),filter_var(--app-transition-medium)] hover:translate-y-[var(--app-elevation-hover-translate-y)] hover:[filter:var(--app-elevation-hover-filter)] focus-visible:translate-y-[var(--app-elevation-hover-translate-y)] focus-visible:[filter:var(--app-elevation-hover-filter)]',
+		'cal-unify': 'font-inherit text-inherit leading-inherit'
 	},
 	transformers: [transformerDirectives()],
 	safelist: [

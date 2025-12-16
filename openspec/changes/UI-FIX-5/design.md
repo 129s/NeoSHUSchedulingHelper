@@ -6,11 +6,11 @@ This change implements the remaining Gemini MCP UI issues (UI-FIX-5) by refining
 ## Key Decisions
 
 1. **Solver toolbar resilience**
-   - Wrap solver action buttons inside a flex container that supports `flex-wrap: wrap` with `gap: var(--token-space-3)` and clamp widths so long translations do not clip.
+   - Wrap solver action buttons inside a flex container that supports `flex-wrap: wrap` with `gap: var(--app-space-3)` and clamp widths so long translations do not clip.
    - Allow the row to stack (buttons drop below toggles) under 480px; continue to rely on Dock layout for additional vertical space.
 
 2. **Pagination footer clearance**
-   - Reserve footer padding within `list-surface.scss` (and Dock workspace) so pagination never overlaps the container bottom.
+   - Reserve footer padding within `ListSurface.svelte` (UnoCSS classes) and the Dock workspace theme so pagination never overlaps the container bottom.
    - When the Dock panel is short, enable `overflow: visible` for the footer region so controls can flow within the scrollable body.
 
 3. **Time preset alignment**

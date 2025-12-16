@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { env as publicEnv } from '$env/dynamic/public';
-import { t } from '$lib/i18n';
+import { t } from '../../../../lib/i18n';
 
 function ensureClientId() {
 	const clientId = publicEnv.PUBLIC_GITHUB_CLIENT_ID;

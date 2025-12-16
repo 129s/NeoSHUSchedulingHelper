@@ -53,6 +53,7 @@ Any spec additions/moves MUST be reflected here, including short descriptions th
 | `openspec/specs/desired-system/spec.md` & `/design.md` | Solver/wishlist/lock DSL, SAT pipeline, signatures. |
 | `openspec/specs/solver-diagnostics/spec.md` | Diagnostics panels, hard/soft violation display contract. |
 | `openspec/specs/action-log/spec.md` | Action log schema, undo/redo semantics, selection logging. |
+| `openspec/specs/jwxt/spec.md` & `/design.md` | JWXT cloud integration: diff preview, push execution, Action Log audit, best-effort undo (compensation). |
 | `openspec/specs/storage/spec.md` | Persistence model (selection matrix, desired store, gist sync). |
 | `openspec/specs/data-pipeline/spec.md` & `/design.md` | Crawler snapshots, raw/parsed/DuckDB caches, hot/warm/cold tiers. |
 | `openspec/specs/parser/spec.md` & `/design.md` | Term parser architecture, overrides, hash tracking. |

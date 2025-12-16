@@ -2,7 +2,7 @@
 
 ## Summary / Scope
 - Satisfy PLAN.md item UI-FIX-5 (NOW bucket) by addressing the five actionable issues flagged by Gemini MCP (MCP-2) plus documenting the density mitigation.
-- Keep implementation scoped to markup/style updates under `app/src/lib/apps/SolverPanel.svelte`, `app/src/lib/components/CourseCard.svelte`, `app/src/lib/styles/{list-surface,course-card,dock-workspace}.scss`, etc., following `spec://cluster/ui-templates#chunk-01..05`.
+- Keep implementation scoped to markup/style updates under `app/src/lib/apps/SolverPanel.svelte`, `app/src/lib/components/{CourseCard,ListSurface}.svelte`, and the shared Dockview theme (`app/src/lib/styles/dockview.css`), following `spec://cluster/ui-templates#chunk-01..05`.
 - Produce change documentation (proposal/design/plan/tasks/apply) and sync PLAN.md upon completion.
 
 ## Work Breakdown
@@ -11,7 +11,7 @@
    - Enumerate tasks + validation in `tasks.md`.
 2. **Solver + pagination fixes (P0/P1)**
    - Update `SolverPanel.svelte` toolbar markup + associated SCSS to enable wrapping/clamp-friendly layout.
-   - Ensure `list-surface.scss`/Dock workspace styles reserve footer space and keep pagination visible.
+   - Ensure `ListSurface.svelte` (UnoCSS) and Dock workspace styles reserve footer space and keep pagination visible.
    - Clean up Solver time preset markup (labels/inputs grid) for consistent alignment.
 3. **Course card affordances (P1)**
    - Add tooltip/title fallback for truncated course names.

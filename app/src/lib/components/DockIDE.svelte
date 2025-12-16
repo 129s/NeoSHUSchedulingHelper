@@ -1,18 +1,19 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, mount, unmount } from 'svelte';
+	import type { SvelteComponent } from 'svelte';
 	import { browser } from '$app/environment';
 	import { translator } from '$lib/i18n';
 	import MinimalWorkspace from '$lib/components/MinimalWorkspace.svelte';
-	import AppButton from '$lib/primitives/AppButton.svelte';
 	import {
 		workspacePanels,
 		type WorkspacePanelType
 	} from '$lib/components/workspacePanels';
-	import type { SvelteComponent } from 'svelte';
 	import {
 		DockviewComponent,
+		type DockviewIDisposable,
+		getPanelData,
 		type Direction,
 		type DockviewPanel,
 		type DockviewPanelApi,
@@ -24,6 +25,14 @@
 
 	const fallbackEnterWidth = 960;
 	const fallbackExitWidth = 1180;
+	const dndEdgesNormal = {
+		activationSize: { type: 'pixels', value: 24 },
+		size: { type: 'percentage', value: 50 }
+	} as const;
+	const dndEdgesSashAssist = {
+		activationSize: { type: 'percentage', value: 45 },
+		size: { type: 'percentage', value: 50 }
+	} as const;
 
 	type PanelTitleMap = Record<WorkspacePanelType, string>;
 	type LayoutStep = {
@@ -32,34 +41,30 @@
 		direction?: Direction;
 	};
 
+	// Default "品字"：左上日历 + 左下求解器 + 右侧全课程（含已选/候选 tabs）
 	const layoutPlan: LayoutStep[] = [
 		{ id: 'course-calendar' },
+		{ id: 'solver', reference: 'course-calendar', direction: 'below' },
 		{ id: 'all-courses', reference: 'course-calendar', direction: 'right' },
-		{ id: 'candidates', reference: 'all-courses', direction: 'within' },
 		{ id: 'selected', reference: 'all-courses', direction: 'within' },
-		{ id: 'solver', reference: 'all-courses', direction: 'right' },
+		{ id: 'candidates', reference: 'all-courses', direction: 'within' },
 		{ id: 'action-log', reference: 'solver', direction: 'within' },
-		{ id: 'sync', reference: 'solver', direction: 'right' },
-		{ id: 'settings', reference: 'sync', direction: 'within' }
+		{ id: 'sync', reference: 'solver', direction: 'within' },
+		{ id: 'jwxt', reference: 'solver', direction: 'within' },
+		{ id: 'settings', reference: 'solver', direction: 'within' }
 	];
 
 	let workspaceRef: HTMLDivElement | null = null;
 	let dockHost: HTMLDivElement | null = null;
 	let dockview: DockviewComponent | null = null;
 	let widthObserver: ResizeObserver | null = null;
+	let dndAssistDisposables: DockviewIDisposable[] = [];
+	let isSashAssistActive = false;
 	let autoFallback = false;
-	let userOverride: 'dock' | 'fallback' | null = null;
 	let layoutError = false;
 	let errorDetail: string | null = null;
-	let mode: 'dock' | 'fallback' = 'dock';
-	let isFallbackActive = false;
-	let fallbackReason: 'auto' | 'error' | 'user' | null = null;
-	let toggleDisabled = false;
-	let showReset = false;
-	let reasonKey: string | null = null;
-	let activeModeLabel: string;
-	let toggleLabel: string;
-	let { class: className = '' } = $props();
+	let useFallback = false;
+	export let className = '';
 
 	const panelApis = new Map<WorkspacePanelType, DockviewPanelApi>();
 
@@ -88,24 +93,17 @@
 		teardownDockview();
 	});
 
-	$: mode = resolveMode();
-	$: isFallbackActive = mode === 'fallback';
-	$: fallbackReason = resolveReason(mode);
-	$: reasonKey = fallbackReason ? `layout.workspace.reason.${fallbackReason}` : null;
-	$: activeModeLabel = isFallbackActive ? t('layout.workspace.modeFallback') : t('layout.workspace.modeDock');
-	$: toggleLabel = isFallbackActive ? t('layout.workspace.toggleToDock') : t('layout.workspace.toggleToFallback');
-	$: toggleDisabled = isFallbackActive && (layoutError || autoFallback);
-	$: showReset = Boolean(userOverride);
+	$: useFallback = layoutError || autoFallback;
 
-	$: if (!isFallbackActive && browser && dockHost) {
+	$: if (!useFallback && browser && dockHost) {
 		ensureDockviewMounted();
 	} else {
 		teardownDockview();
 	}
 
-$: if (!isFallbackActive && dockview) {
-	updatePanelTitles(panelTitles);
-}
+	$: if (!useFallback && dockview) {
+		updatePanelTitles(panelTitles);
+	}
 
 	function buildPanelTitles(translate: (key: string) => string): PanelTitleMap {
 		return {
@@ -116,57 +114,19 @@ $: if (!isFallbackActive && dockview) {
 			solver: translate('panels.solver.title'),
 			'action-log': translate('panels.actionLog.title'),
 			sync: translate('panels.sync.title'),
+			jwxt: translate('panels.jwxt.title'),
 			settings: translate('settings.title')
 		};
 	}
 
 	function updateAutoFallback(width: number) {
 		if (!width) return;
+
 		if (width < fallbackEnterWidth) {
 			autoFallback = true;
 		} else if (width > fallbackExitWidth && autoFallback) {
 			autoFallback = false;
 		}
-	}
-
-	function resolveMode(): 'dock' | 'fallback' {
-		if (userOverride === 'fallback') {
-			return 'fallback';
-		}
-		if (layoutError) {
-			return 'fallback';
-		}
-		if (userOverride === 'dock' && !autoFallback) {
-			return 'dock';
-		}
-		return autoFallback ? 'fallback' : 'dock';
-	}
-
-	function resolveReason(currentMode: 'dock' | 'fallback'): 'auto' | 'error' | 'user' | null {
-		if (currentMode === 'fallback') {
-			if (layoutError) return 'error';
-			if (userOverride === 'fallback') return 'user';
-			if (autoFallback) return 'auto';
-		}
-		if (currentMode === 'dock' && userOverride === 'dock') {
-			return 'user';
-		}
-		return null;
-	}
-
-	function toggleMode() {
-		if (isFallbackActive) {
-			if (layoutError || autoFallback) {
-				return;
-			}
-			userOverride = 'dock';
-		} else {
-			userOverride = 'fallback';
-		}
-	}
-
-	function resetOverride() {
-		userOverride = null;
 	}
 
 	function ensureDockviewMounted() {
@@ -177,10 +137,15 @@ $: if (!isFallbackActive && dockview) {
 			dockview = new DockviewComponent(dockHost, {
 				createComponent: ({ name }) => createRenderer(assertPanelType(name)),
 				className: 'dockview-theme-app',
-				disableFloatingGroups: true,
+				dndEdges: {
+					...dndEdgesNormal
+				},
+				disableFloatingGroups: false,
+				floatingGroupBounds: 'boundedWithinViewport',
 				scrollbars: 'native'
 			});
 
+			registerSashAssist(dockview);
 			buildDefaultLayout();
 			layoutError = false;
 		} catch (error) {
@@ -191,6 +156,7 @@ $: if (!isFallbackActive && dockview) {
 	}
 
 	function teardownDockview() {
+		teardownSashAssist();
 		if (dockview) {
 			try {
 				dockview.dispose();
@@ -202,6 +168,81 @@ $: if (!isFallbackActive && dockview) {
 		panelApis.clear();
 	}
 
+	function teardownSashAssist() {
+		dndAssistDisposables.forEach((disposable) => disposable.dispose());
+		dndAssistDisposables = [];
+		isSashAssistActive = false;
+	}
+
+	function registerSashAssist(target: DockviewComponent) {
+		teardownSashAssist();
+
+		const refresh = (next: boolean) => {
+			if (next === isSashAssistActive) return;
+			isSashAssistActive = next;
+			target.updateOptions({ dndEdges: next ? dndEdgesSashAssist : dndEdgesNormal });
+		};
+
+		const onDragOverCapture = (event: DragEvent) => {
+			if (!dockHost) return;
+			const data = getPanelData();
+			if (!data) {
+				refresh(false);
+				return;
+			}
+			const hit = findNearestSashHit(dockHost, event.clientX, event.clientY);
+			refresh(Boolean(hit));
+		};
+
+		const onDropOrEndCapture = () => {
+			refresh(false);
+		};
+
+		document.addEventListener('dragover', onDragOverCapture, true);
+		document.addEventListener('drop', onDropOrEndCapture, true);
+		window.addEventListener('dragend', onDropOrEndCapture, true);
+
+		dndAssistDisposables.push({
+			dispose() {
+				document.removeEventListener('dragover', onDragOverCapture, true);
+				document.removeEventListener('drop', onDropOrEndCapture, true);
+				window.removeEventListener('dragend', onDropOrEndCapture, true);
+			}
+		});
+	}
+
+	function findNearestSashHit(host: HTMLElement, clientX: number, clientY: number): HTMLElement | null {
+		if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+
+		const hostRect = host.getBoundingClientRect();
+		if (
+			clientX < hostRect.left ||
+			clientX > hostRect.right ||
+			clientY < hostRect.top ||
+			clientY > hostRect.bottom
+		) {
+			return null;
+		}
+
+		const sashes = Array.from(host.querySelectorAll<HTMLElement>('.dv-sash'));
+		if (sashes.length === 0) return null;
+
+		const hitPadding = 10;
+		for (const sash of sashes) {
+			const rect = sash.getBoundingClientRect();
+			if (
+				clientX >= rect.left - hitPadding &&
+				clientX <= rect.right + hitPadding &&
+				clientY >= rect.top - hitPadding &&
+				clientY <= rect.bottom + hitPadding
+			) {
+				return sash;
+			}
+		}
+
+		return null;
+	}
+
 	function assertPanelType(name: string): WorkspacePanelType {
 		if (name in workspacePanels) {
 			return name as WorkspacePanelType;
@@ -210,34 +251,36 @@ $: if (!isFallbackActive && dockview) {
 	}
 
 	function createRenderer(panelType: WorkspacePanelType): IContentRenderer {
-		const ComponentCtor = workspacePanels[panelType] as new (options: { target: HTMLElement }) => SvelteComponent;
+		const ComponentCtor = workspacePanels[panelType];
 		const element = document.createElement('div');
 		element.className = 'flex h-full w-full min-h-0 min-w-0 flex-col';
-		let instance: SvelteComponent | null = null;
+		let mounted: ReturnType<typeof mount> | null = null;
 
 		return {
 			element,
 			init: (params: GroupPanelPartInitParameters) => {
-				instance = new ComponentCtor({ target: element });
+				mounted = mount(ComponentCtor, { target: element }) as SvelteComponent;
 				panelApis.set(panelType, params.api);
 				params.api.setTitle(panelTitles[panelType]);
 			},
 			dispose: () => {
 				panelApis.delete(panelType);
-				instance?.$destroy();
-				instance = null;
+				if (mounted) {
+					unmount(mounted);
+					mounted = null;
+				}
 				element.replaceChildren();
 			}
 		};
 	}
 
-function buildDefaultLayout() {
-	const target = dockview;
-	if (!target) return;
+	function buildDefaultLayout() {
+		const target = dockview;
+		if (!target) return;
 
-	const createdPanels = new Map<WorkspacePanelType, DockviewPanel>();
-	layoutPlan.forEach((step) => {
-		let panel: DockviewPanel;
+		const createdPanels = new Map<WorkspacePanelType, DockviewPanel>();
+		layoutPlan.forEach((step) => {
+			let panel: DockviewPanel;
 
 			if (step.reference) {
 				const reference = createdPanels.get(step.reference);
@@ -265,78 +308,44 @@ function buildDefaultLayout() {
 		});
 	}
 
-function updatePanelTitles(titles: PanelTitleMap) {
-	panelApis.forEach((api, panelType) => {
-		const title = titles[panelType];
-		if (title) {
-			api.setTitle(title);
-		}
-	});
-}
+	function updatePanelTitles(titles: PanelTitleMap) {
+		panelApis.forEach((api, panelType) => {
+			const title = titles[panelType];
+			if (title) {
+				api.setTitle(title);
+			}
+		});
+	}
 </script>
 
 <div
 	bind:this={workspaceRef}
-	class={`flex h-full min-h-0 w-full flex-col gap-4 text-[var(--app-text-md)] text-[var(--app-color-fg)] ${className}`.trim()}
+	class={`flex h-full min-h-0 w-full flex-col gap-3 text-[var(--app-text-sm)] text-[var(--app-color-fg)] ${className}`.trim()}
 >
-	<div
-		class="flex flex-wrap items-center justify-between gap-3 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] px-4 py-3 shadow-[var(--app-shadow-soft)]"
-	>
-		<div class="flex flex-wrap items-center gap-2 text-[var(--app-text-sm)]">
-			<span
-				class="rounded-[var(--app-radius-pill)] bg-[color-mix(in_srgb,var(--app-color-primary)_15%,transparent)] px-3 py-1 font-semibold text-[var(--app-color-primary)]"
-			>
-				{activeModeLabel}
-			</span>
-
-			{#if reasonKey}
-				<span class="rounded-[var(--app-radius-pill)] bg-[var(--app-color-bg-muted)] px-3 py-1 text-[var(--app-color-fg-muted)]">
-					{t(reasonKey)}
-				</span>
-			{/if}
-
-			{#if layoutError}
-				<span class="rounded-[var(--app-radius-pill)] bg-[color-mix(in_srgb,var(--app-color-danger)_10%,var(--app-color-bg))] px-3 py-1 text-[var(--app-color-danger)]">
-					{t('layout.workspace.loadErrorTitle')}
-				</span>
-			{/if}
-		</div>
-
-		<div class="flex flex-wrap items-center gap-2">
-			<AppButton variant="secondary" size="sm" on:click={toggleMode} disabled={toggleDisabled}>
-				{toggleLabel}
-			</AppButton>
-			{#if showReset}
-				<AppButton variant="ghost" size="sm" on:click={resetOverride}>
-					{t('layout.workspace.toggleReset')}
-				</AppButton>
-			{/if}
-		</div>
-	</div>
-
-	{#if layoutError && errorDetail}
+	{#if layoutError}
 		<div
-			class="rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-danger)] bg-[color-mix(in_srgb,var(--app-color-danger)_10%,var(--app-color-bg))] p-4 text-[var(--app-text-sm)] text-[var(--app-color-danger)]"
+			class="rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-danger)] bg-[color-mix(in_srgb,var(--app-color-danger)_10%,var(--app-color-bg))] p-3 text-[var(--app-text-sm)] text-[var(--app-color-danger)]"
 		>
-			<p class="m-0 font-medium">{t('layout.workspace.loadErrorHint')}</p>
-			<p class="mt-2 text-[var(--app-text-xs)] opacity-80">{errorDetail}</p>
+			<p class="m-0 font-medium">{t('layout.workspace.loadErrorTitle')}</p>
+			<p class="mt-2">{t('layout.workspace.loadErrorHint')}</p>
+			{#if errorDetail}
+				<p class="mt-2 text-[var(--app-text-xs)] opacity-80">{errorDetail}</p>
+			{/if}
 		</div>
 	{/if}
 
-	{#if isFallbackActive}
+	{#if useFallback}
 		<div
-			class="flex flex-1 min-h-0 flex-col gap-3 rounded-[var(--app-radius-xl)] border border-dashed border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-4 shadow-[var(--app-shadow-soft)]"
+			class="flex flex-1 min-h-0 flex-col gap-2.5 rounded-[var(--app-radius-xl)] border border-dashed border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-3 shadow-[var(--app-shadow-soft)]"
 		>
 			{#if autoFallback}
 				<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t('layout.workspace.narrowMessage')}</p>
-			{:else if !layoutError}
-				<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t('layout.workspace.manualFallbackHint')}</p>
 			{/if}
 			<MinimalWorkspace {panelTitles} />
 		</div>
 	{:else}
 		<div
-			class="flex flex-1 min-h-0 rounded-[var(--app-radius-xl)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-2 shadow-[var(--app-shadow-hard)]"
+			class="flex flex-1 min-h-0 rounded-[var(--app-radius-xl)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-1.5 shadow-[var(--app-shadow-hard)]"
 		>
 			<div bind:this={dockHost} class="dockview-theme-app flex h-full w-full min-h-0 rounded-[var(--app-radius-lg)]"></div>
 		</div>

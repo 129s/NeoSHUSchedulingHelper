@@ -57,6 +57,16 @@ export class ActionLog {
 		return newEntry;
 	}
 
+	update(id: string, updater: (entry: ActionLogEntry) => ActionLogEntry) {
+		const index = this.entries.findIndex((entry) => entry.id === id);
+		if (index === -1) return null;
+		const current = this.entries[index];
+		const updated = normalizeEntry(updater(current));
+		this.entries[index] = updated;
+		this.emit();
+		return updated;
+	}
+
 	getEntries(limit?: number) {
 		if (!limit) return [...this.entries];
 		return this.entries.slice(-limit);

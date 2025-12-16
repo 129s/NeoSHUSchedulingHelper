@@ -43,11 +43,13 @@ DockIDE + DockPanelShell + MinimalWorkspace rely on UnoCSS utilities (`flex`, `g
 - Register panels via `workspacePanels` map; each renderer forwards translator titles via `panelTitleMap`.
 - `className='dockview-theme-app'` ties Dockview theme tokens to the Virtual Theme Layer.
 - Horizontal drag handles, tabs, and watermarks inherit `--app-*` colors in `dockview.css`.
+- Floating groups are enabled (free-floating windows within the viewport) unless explicitly disabled for a future mobile-only mode.
+- Root-edge docking uses a VSCode-like `dndEdges` overlay model (avoid the default 10px activation / 20px preview strip).
 - DockIDE should persist Dockview layout JSON via a store (TODO tracked under UI-REBOOT-2025).
 
 ### Requirement: Responsive fallback
 - DockIDE tracks container width via `ResizeObserver`. When width < fallback threshold or Dockview errors, it renders `<MinimalWorkspace>` (tabbed layout) using `ResponsiveSwitch` to swap tab buttons/select control.
-- Users may manually toggle fallback vs dock modes; overrides persist until reset.
+- Fallback is automatic—no manual toggle or mode indicator remains in the shell. When the viewport recovers, Dockview remounts automatically.
 - MinimalWorkspace must reuse the same panel titles/slots, ensuring state parity.
 
 ### Requirement: Testing

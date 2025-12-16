@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""CLI helpers for keeping i18n dictionaries consistent and free of bare literals."""
+"""CLI helpers for keeping i18n dictionaries consistent and UI text localized.
+
+Notes on what `scan` checks (and what it intentionally does not):
+- `scan` is a *UI-facing* check. By default it scans only `.svelte` files under `app/src`.
+- Chinese literals in data/config/parsers are allowed and are NOT scanned by default.
+  (Example: campus names, timetable parsing patterns, raw dataset taxonomy strings.)
+
+Allowed vs disallowed "ignore":
+- Allowed: ignoring generated/build/vendor directories (e.g. `node_modules`, `.svelte-kit`, `dist`) and locale sources
+  (`app/src/lib/i18n/locales`) because they are not UI pages/components.
+- Not allowed: ignoring core UI directories (e.g. `app/src/routes`, `app/src/lib/apps`, `app/src/lib/components`,
+  `app/src/lib/primitives`, `app/src/lib/layout`) to hide UI strings; UI text must go through i18n keys.
+"""
 
 from __future__ import annotations
 
@@ -11,12 +23,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def resolve_repo_path(path: Path) -> Path:
+    return path if path.is_absolute() else (REPO_ROOT / path)
+
+
 DEFAULT_LOCALES = [
     Path("app/src/lib/i18n/locales/zh-CN.ts"),
-    Path("app/src/lib/i18n/locales/en-US.ts")
+    Path("app/src/lib/i18n/locales/en-US.ts"),
 ]
 DEFAULT_SCAN_ROOT = Path("app/src")
-DEFAULT_EXTS = {".ts", ".tsx", ".js", ".jsx", ".svelte"}
+# Scan only UI components by default (Svelte). Override via `--ext` when needed.
+DEFAULT_EXTS = {".svelte"}
 DEFAULT_IGNORE_DIRS = {
     ".git",
     "node_modules",
@@ -41,6 +61,16 @@ EXPORT_DECL_RE = re.compile(r"export\s+const\s+[A-Za-z0-9_]+\s*=")
 
 class LocaleParseError(RuntimeError):
     """Raised when a locale file cannot be parsed."""
+
+
+# Guardrails: do not let callers "ignore" away UI source directories to silence regressions.
+PROTECTED_UI_DIRS: Tuple[Path, ...] = (
+    Path("app/src/routes"),
+    Path("app/src/lib/apps"),
+    Path("app/src/lib/components"),
+    Path("app/src/lib/primitives"),
+    Path("app/src/lib/layout"),
+)
 
 
 @dataclass
@@ -350,22 +380,40 @@ def run_command(args: argparse.Namespace) -> Tuple[bool, Dict[str, Any]]:
     ignore_dirs = args.ignore_dir or []
     ignore_files = args.ignore_file or []
     allow_patterns = args.allow_pattern or []
+    locales = [resolve_repo_path(path) for path in args.locales]
+    root = resolve_repo_path(args.root)
+    key_output = resolve_repo_path(args.key_output)
+    # Prevent "ignore UI" footguns: allow ignoring build/output/data dirs, but not the UI source tree.
+    for fragment in ignore_dirs:
+        fragment_path = Path(fragment)
+        frag_parts = tuple(part for part in fragment_path.parts if part and part != ".")
+        if not frag_parts:
+            continue
+        for protected in PROTECTED_UI_DIRS:
+            protected_parts = tuple(part for part in protected.parts if part and part != ".")
+            if not protected_parts:
+                continue
+            # If fragment is a prefix of a protected dir, it would hide UI files; reject.
+            if len(frag_parts) <= len(protected_parts) and list(protected_parts[: len(frag_parts)]) == list(frag_parts):
+                raise LocaleParseError(
+                    f"scan 禁止通过 --ignore-dir 忽略 UI 目录片段: {fragment} (would hide {protected})"
+                )
     if args.command == "compare":
-        return compare_locales(args.locales)
+        return compare_locales(locales)
     if args.command == "scan":
-        return scan_literals(args.root, extensions, ignore_dirs, ignore_files, allow_patterns)
+        return scan_literals(root, extensions, ignore_dirs, ignore_files, allow_patterns)
     if args.command == "dump":
-        return dump_keys(args.locales, args.key_output)
+        return dump_keys(locales, key_output)
     combined: Dict[str, Any] = {}
-    ok_compare, rep_compare = compare_locales(args.locales)
+    ok_compare, rep_compare = compare_locales(locales)
     combined["compare"] = rep_compare
     if not ok_compare:
         return False, combined
-    ok_scan, rep_scan = scan_literals(args.root, extensions, ignore_dirs, ignore_files, allow_patterns)
+    ok_scan, rep_scan = scan_literals(root, extensions, ignore_dirs, ignore_files, allow_patterns)
     combined["scan"] = rep_scan
     if not ok_scan:
         return False, combined
-    ok_dump, rep_dump = dump_keys(args.locales, args.key_output)
+    ok_dump, rep_dump = dump_keys(locales, key_output)
     combined["dump"] = rep_dump
     return ok_dump, combined
 
@@ -385,11 +433,14 @@ def main() -> None:
             elif args.command == "dump":
                 print_dump(report)
             else:
-                print_compare(report["compare"])
-                print()
-                print_scan(report["scan"])
-                print()
-                print_dump(report["dump"])
+                if "compare" in report:
+                    print_compare(report["compare"])
+                if "scan" in report:
+                    print()
+                    print_scan(report["scan"])
+                if "dump" in report:
+                    print()
+                    print_dump(report["dump"])
         sys.exit(0 if ok else 1)
     except LocaleParseError as exc:
         print(f"[i18n-check] {exc}", file=sys.stderr)

@@ -2,7 +2,8 @@
 import DockPanel from './DockPanel.svelte';
 import type { DockPanelData, DockZone, PanelTemplate, PanelKind } from '$lib/types/dock';
 import { PANEL_MIME_TYPE } from '$lib/types/dock';
-import '$lib/styles/components/debug-workbench.scss';
+import AppButton from '$lib/primitives/AppButton.svelte';
+import AppListCard from '$lib/components/AppListCard.svelte';
 
 	const panelTemplates: PanelTemplate[] = [
 		{
@@ -150,44 +151,61 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 	$: leftPanels = panels.filter((panel) => panel.zone === 'left');
 	$: rightPanels = panels.filter((panel) => panel.zone === 'right');
 	$: bottomPanels = panels.filter((panel) => panel.zone === 'bottom');
+
+	const zoneBaseClass =
+		'dock-zone flex flex-col gap-3 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[color-mix(in_srgb,var(--app-color-bg-elevated)_95%,var(--app-color-fg)_5%)] p-4 min-h-[240px] transition-colors';
+	const zoneHighlightClass =
+		'border-[color:var(--app-color-primary)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--app-color-primary)_40%,transparent)]';
+
 </script>
 
-<section class="workbench">
-	<header class="workbench__toolbar">
-		<div>
-			<h1>SHU Scheduling Debug Workbench</h1>
-			<p>Drag panels anywhere to build your own debugging view.</p>
+<section class="workbench flex flex-col gap-6 p-6 text-[var(--app-text-sm)] text-[var(--app-color-fg)] bg-[var(--app-color-bg)] rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] shadow-[var(--app-shadow-soft)]">
+	<header class="workbench__toolbar flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+		<div class="space-y-1.5">
+			<h1 class="m-0 text-[var(--app-text-lg)] font-semibold">SHU Scheduling Debug Workbench</h1>
+			<p class="m-0 text-[var(--app-color-fg-muted)]">Drag panels anywhere to build your own debugging view.</p>
 		</div>
-		<div class="session-controls">
-			<label>
-				Scenario
-				<select bind:value={selectedScenario}>
+		<div class="session-controls flex flex-wrap items-end gap-3">
+			<label class="flex flex-col gap-1 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
+				<span>Scenario</span>
+				<select
+					bind:value={selectedScenario}
+					class="rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]"
+				>
 					<option value="2024 Spring">2024 Spring</option>
 					<option value="2024 Fall">2024 Fall</option>
 					<option value="Lab courses">Lab courses</option>
 				</select>
 			</label>
-			<button type="button">Refresh snapshot</button>
+			<AppButton variant="primary" size="sm">Refresh snapshot</AppButton>
 		</div>
 	</header>
 
-	<div class="panel-library">
-		<h3>Panel library</h3>
-		<p>Add panels anytime for quick analysis or comparison.</p>
-		<div class="template-grid">
+	<div class="panel-library rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-4 shadow-[var(--app-shadow-soft)]">
+		<h3 class="m-0 text-[var(--app-text-md)] font-semibold">Panel library</h3>
+		<p class="mb-4 mt-1 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Add panels anytime for quick analysis or comparison.</p>
+		<div class="template-grid grid gap-3 md:grid-cols-2 xl:grid-cols-3">
 			{#each panelTemplates as template (template.kind)}
-				<button type="button" on:click={() => addPanel(template.kind)}>
-					<strong>{template.title}</strong>
-					<span>{template.subtitle}</span>
-					<small>Default zone: {template.defaultZone}</small>
-				</button>
+				<AppListCard
+					title={template.title}
+					subtitle={template.subtitle}
+					interactive={true}
+					class="cursor-pointer border-[color-mix(in_srgb,var(--app-color-primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-primary)_12%,var(--app-color-bg))] hover:bg-[color-mix(in_srgb,var(--app-color-primary)_18%,var(--app-color-bg))]"
+					role="button"
+					tabindex={0}
+					on:click={() => addPanel(template.kind)}
+				>
+					<small class="text-[var(--app-text-xs)] text-[var(--app-color-primary)]">
+						Default zone: {template.defaultZone}
+					</small>
+				</AppListCard>
 			{/each}
 		</div>
 	</div>
 
-	<div class="dock-layout">
+	<div class="dock-layout grid gap-4 xl:grid-cols-[280px,1fr,280px]">
 		<div
-			class={`dock-zone left ${highlightedZone === 'left' ? 'highlight' : ''}`}
+			class={`${zoneBaseClass} ${highlightedZone === 'left' ? zoneHighlightClass : ''}`}
 			role="region"
 			aria-label="Left dock drop zone"
 			on:dragenter={(event) => handleDragEnter('left', event)}
@@ -195,12 +213,12 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 			on:drop={(event) => handleDrop('left', event)}
 			on:dragleave={(event) => handleDragLeave('left', event)}
 		>
-			<div class="zone-header">
-				<h4>Left dock</h4>
+			<div class="zone-header flex items-center justify-between text-[var(--app-text-xs)] uppercase tracking-[0.08em] text-[var(--app-color-fg-muted)]">
+				<h4 class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">Left dock</h4>
 				<span>{leftPanels.length} panels</span>
 			</div>
 			{#if leftPanels.length === 0}
-				<p class="zone-placeholder">Drag any panel here</p>
+				<p class="zone-placeholder rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-bg)_92%,var(--app-color-fg)_8%)] px-3 py-2 text-center text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Drag any panel here</p>
 			{/if}
 			{#each leftPanels as panel (panel.id)}
 				<DockPanel
@@ -214,32 +232,32 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 			{/each}
 		</div>
 
-		<div class="viewport">
-			<div class="viewport__header">
-				<div>
-					<h3>Schedule preview</h3>
-					<p>Current scenario: {selectedScenario}</p>
+		<div class="viewport order-first flex flex-col rounded-[var(--app-radius-xl)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] shadow-[var(--app-shadow-soft)] xl:order-none">
+			<div class="viewport__header flex flex-col gap-2 border-b border-[color:var(--app-color-border-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+				<div class="space-y-1">
+					<h3 class="m-0 text-[var(--app-text-md)] font-semibold">Schedule preview</h3>
+					<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Current scenario: {selectedScenario}</p>
 				</div>
-				<div class="view-actions">
-					<button type="button">Highlight conflicts</button>
-					<button type="button">Export draft</button>
+				<div class="view-actions flex flex-wrap gap-2">
+					<AppButton variant="secondary" size="sm">Highlight conflicts</AppButton>
+					<AppButton variant="secondary" size="sm">Export draft</AppButton>
 				</div>
 			</div>
-			<div class="viewport__canvas">
-				<div class="timeline-bar">
-					<div class="tick danger" style="left: 35%"></div>
-					<div class="tick warn" style="left: 62%"></div>
-					<div class="tick ok" style="left: 82%"></div>
+			<div class="viewport__canvas flex flex-col gap-4 p-4">
+				<div class="timeline-bar relative h-1.5 rounded-full bg-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)]">
+					<div class="absolute -top-1.5 h-4 w-2 rounded-full bg-[var(--app-color-danger)]" style="left:35%"></div>
+					<div class="absolute -top-1.5 h-4 w-2 rounded-full bg-[var(--app-color-warning)]" style="left:62%"></div>
+					<div class="absolute -top-1.5 h-4 w-2 rounded-full bg-[var(--app-color-success)]" style="left:82%"></div>
 				</div>
-				<div class="grid">
+				<div class="grid flex flex-col gap-3">
 					{#each Array(5) as _, idx}
-						<div class="grid-row">
-							<span>Day {idx + 1}</span>
-							<div class="grid-cells">
-								<div class="cell busy"></div>
-								<div class="cell"></div>
-								<div class="cell busy"></div>
-								<div class="cell conflict"></div>
+						<div class="grid-row flex items-center gap-3">
+							<span class="w-16 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Day {idx + 1}</span>
+							<div class="grid-cells grid w-full grid-cols-4 gap-2">
+								<div class="cell h-12 rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-primary)_20%,var(--app-color-bg-elevated))]"></div>
+								<div class="cell h-12 rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-bg-elevated)_95%,var(--app-color-fg)_5%)]"></div>
+								<div class="cell h-12 rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-primary)_20%,var(--app-color-bg-elevated))]"></div>
+								<div class="cell h-12 rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-danger)_20%,var(--app-color-bg-elevated))]"></div>
 							</div>
 						</div>
 					{/each}
@@ -248,7 +266,7 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 		</div>
 
 		<div
-			class={`dock-zone right ${highlightedZone === 'right' ? 'highlight' : ''}`}
+			class={`${zoneBaseClass} ${highlightedZone === 'right' ? zoneHighlightClass : ''}`}
 			role="region"
 			aria-label="Right dock drop zone"
 			on:dragenter={(event) => handleDragEnter('right', event)}
@@ -256,12 +274,12 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 			on:drop={(event) => handleDrop('right', event)}
 			on:dragleave={(event) => handleDragLeave('right', event)}
 		>
-			<div class="zone-header">
-				<h4>Right dock</h4>
+			<div class="zone-header flex items-center justify-between text-[var(--app-text-xs)] uppercase tracking-[0.08em] text-[var(--app-color-fg-muted)]">
+				<h4 class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">Right dock</h4>
 				<span>{rightPanels.length} panels</span>
 			</div>
 			{#if rightPanels.length === 0}
-				<p class="zone-placeholder">Drag any panel here</p>
+				<p class="zone-placeholder rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-bg)_92%,var(--app-color-fg)_8%)] px-3 py-2 text-center text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Drag any panel here</p>
 			{/if}
 			{#each rightPanels as panel (panel.id)}
 				<DockPanel
@@ -277,7 +295,7 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 	</div>
 
 	<div
-		class={`dock-zone bottom ${highlightedZone === 'bottom' ? 'highlight' : ''}`}
+		class={`${zoneBaseClass} ${highlightedZone === 'bottom' ? zoneHighlightClass : ''}`}
 		role="region"
 		aria-label="Bottom dock drop zone"
 		on:dragenter={(event) => handleDragEnter('bottom', event)}
@@ -285,14 +303,14 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 		on:drop={(event) => handleDrop('bottom', event)}
 		on:dragleave={(event) => handleDragLeave('bottom', event)}
 	>
-		<div class="zone-header">
-			<h4>Bottom output</h4>
+		<div class="zone-header flex items-center justify-between text-[var(--app-text-xs)] uppercase tracking-[0.08em] text-[var(--app-color-fg-muted)]">
+			<h4 class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">Bottom output</h4>
 			<span>{bottomPanels.length} panels</span>
 		</div>
 		{#if bottomPanels.length === 0}
-			<p class="zone-placeholder">Drag any panel here</p>
+			<p class="zone-placeholder rounded-[var(--app-radius-md)] bg-[color-mix(in_srgb,var(--app-color-bg)_92%,var(--app-color-fg)_8%)] px-3 py-2 text-center text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">Drag any panel here</p>
 		{/if}
-		<div class="bottom-panels">
+		<div class="bottom-panels grid gap-3 md:grid-cols-2">
 			{#each bottomPanels as panel (panel.id)}
 				<DockPanel
 					title={panel.title}

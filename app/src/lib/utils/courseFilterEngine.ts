@@ -36,6 +36,19 @@ interface ScheduleSlot {
 
 const DEFAULT_MAX_WEEKS = 20;
 
+function resolveConflictTargetLabel(id: string) {
+	const entry = courseCatalogMap.get(id);
+	if (!entry) return null;
+	return entry.title ?? entry.courseCode ?? null;
+}
+
+function formatConflictTargets(ids: string[]) {
+	return ids
+		.map(resolveConflictTargetLabel)
+		.filter((value): value is string => Boolean(value))
+		.join('、');
+}
+
 export function applyCourseFilters(
 	courses: CourseCatalogEntry[],
 	state: CourseFilterState,
@@ -59,9 +72,12 @@ export function applyCourseFilters(
 		if (hardTargets?.length) {
 			courseMeta.conflict = 'hard-conflict';
 			courseMeta.conflictTargets = hardTargets;
+			const targetLabel = formatConflictTargets(hardTargets);
 			courseMeta.diagnostics.push({
 				label: 'conflic',
-				reason: t('conflict.hardConflict').replace('{targets}', hardTargets.join('、'))
+				reason: targetLabel
+					? t('conflict.hardConflict').replace('{targets}', targetLabel)
+					: t('panels.common.conflictHard')
 			});
 			courseMeta.diagnostics.push({ label: 'impossible' });
 		} else {
@@ -69,9 +85,12 @@ export function applyCourseFilters(
 			if (overlaps.length) {
 				courseMeta.conflict = 'time-conflict';
 				courseMeta.conflictTargets = overlaps;
+				const overlapLabel = formatConflictTargets(overlaps);
 				courseMeta.diagnostics.push({
 					label: 'conflic',
-					reason: t('conflict.timeConflict').replace('{overlaps}', overlaps.join('、'))
+					reason: overlapLabel
+						? t('conflict.timeConflict').replace('{overlaps}', overlapLabel)
+						: t('panels.common.conflictTime')
 				});
 			}
 		}
@@ -82,8 +101,8 @@ export function applyCourseFilters(
 		if (!matchSimple(course.college ?? '', state.college)) continue;
 		if (!matchSimple(course.major ?? '', state.major)) continue;
 		if (!matchTeachingLanguage(course.teachingLanguage ?? t('config.teachingLanguages.unspecified'), state.teachingLanguage)) continue;
-		if (!matchTeachingMode(course.teachingMode ?? '', course.selectionNote ?? '', state.teachingMode, state.teachingModeOther, state.matchCase)) continue;
 		if (!matchSpecial(course.specialType ?? [], state.specialFilter)) continue;
+		if (!matchSpecialTags(course.specialFilterTags ?? [], state.specialTags)) continue;
 		if (!matchWeekFilters(course.weekParity, course.weekSpan, state.weekParityFilter, state.weekSpanFilter)) continue;
 		if (!matchCredit(course.credit, state.minCredit, state.maxCredit)) continue;
 		if (!matchCapacity(course.vacancy, state.capacityMin)) continue;
@@ -160,24 +179,9 @@ function matchSpecial(types: string[], filter: CourseFilterState['specialFilter'
 	return true;
 }
 
-function matchTeachingMode(
-	teachingMode: string,
-	selectionNote: string,
-	selected: string[],
-	otherText: string,
-	matchCase: boolean
-) {
-	const hasSelected = selected.length > 0;
-	const normalizedMode = matchCase ? teachingMode : teachingMode.toLowerCase();
-	const haystack = matchCase ? `${teachingMode} ${selectionNote}` : `${teachingMode} ${selectionNote}`.toLowerCase();
-	if (hasSelected && !selected.some((value) => (matchCase ? value === teachingMode : value.toLowerCase() === normalizedMode))) {
-		return false;
-	}
-	if (otherText.trim()) {
-		const needle = matchCase ? otherText.trim() : otherText.trim().toLowerCase();
-		return haystack.includes(needle);
-	}
-	return true;
+function matchSpecialTags(courseTags: string[], selected: string[]) {
+	if (!selected.length) return true;
+	return selected.some((tag) => courseTags.includes(tag));
 }
 
 function matchWeekFilters(

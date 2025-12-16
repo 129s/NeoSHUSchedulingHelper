@@ -1,426 +1,193 @@
-```markdown
-# AGENTS Operating Guide – UI Rebuild 2025
+# AGENTS.md — Global Agent Contract (Layered Prompt System)
 
-> **Status：** 完全重写前端。  
-> 旧的前端除了少量业务交互逻辑 / 类型定义外，**一律视为废弃参考，不要复用 UI 代码、样式和布局**。  
-> 目标：构建一套「Runtime Tokens + Virtual Theme Layer + UnoCSS + Dockview」驱动的 Svelte UI。
-
-本文件面向两类参与者：
-
-- **人类开发者**
-- **LLM Agent（包括通过 MCP 接入的 Svelte / mdui 文档服务）**
-
-任何自动修改前端代码的动作，都必须满足本文件约束。
+> 本仓库的顶层 agent 约束文件。**全体 AI coding agents 与人类开发者**应将本文件视为首要规则来源。
+> 注意：仓库规模大、OpenSpec 高耦合、token 成本高，默认要求使用 memory MCP / RAG 分层检索知识，避免盲目扫库。
 
 ---
 
-## 0. 名词约定 & 非包说明
+## 1. 前置声明
 
-- **flex / grid**
-  - 指 **CSS 布局模型**（`display: flex` / `display: grid`），**不是 npm 包，也不是框架**。
-  - 在代码中通过 UnoCSS 原子类使用：`flex`, `flex-col`, `items-center`, `grid`, `grid-cols-*` 等。
-
-- **Runtime Tokens**
-  - 指由第三方库在 **运行时** 通过 JS 算出来并写入 `document` 的 CSS 自定义属性（CSS variables），用于颜色、层级、对比度等。
-
-- **Virtual Theme Layer**
-  - 项目自定义的、统一的设计系统语义层：所有 UI 代码只认 `--app-*` 这套变量，不直接使用 Fluent / MD3 原生 token 名。
+1. **优先级顺序**：本文件 → OpenSpec（`openspec/specs/**`, `openspec/changes/**`, `openspec/AGENTS.base.md`）→ Spec Kit（`.specify/**`）→ 其他 agent 说明（如 `.github/copilot-instructions.md`, `.cursor/rules/**`, `CLAUDE.md`, `GEMINI.md`, `QWEN.md`）。
+2. **核心约束**：
+   - 禁止一次性读取或粘贴整个 `openspec/specs/**`、`openspec/changes/**`；知识应通过 memory MCP 按需拉取并引用 URI。
+   - 禁止在未绑定 `change-id` 的情况下修改核心逻辑或共享模块。
+   - 禁止未检索 memory 摘要就直接 coding；必须先拉取 Core/Cluster/Change 摘要并记录 URI。
+3. **系统流程**：保持 Brainflow + OpenSpec 流程（proposal → design → plan/tasks → apply → archive）。
+4. **默认工具与成本**：优先使用 `rg`、本地 tests/check；长跑脚本或外部依赖需提前告知成本。
 
 ---
 
-## 1. 技术栈一览（新前端）
+## 2. Core Layer
 
-### 1.1 语言 / Runtime
+### 2.1 行为总则
 
-- TypeScript
-- Svelte 5 + SvelteKit（路由 / SSR / hydration / endpoints）
-- Node 18+ 或 Bun（本地开发 / SSR）
+- 任务开始前阅读 Core Layer 并确认 change scope；保持最小上下文、幂等与安全边界。
+- 任何决策、不确定点写入 `PLAN.md` 或相关 `openspec/changes/<id>/project.md`，等待人类确认后再推进。
+- 输出应精简且可审计；引用 memory 时注明 URI，便于回溯。
+- **临时文件管理**：agent 生成的临时文件（日志、中间产物、调试输出等）统一放置在项目根目录 `agentTemps/`，禁止散落各处（该目录应被 `.gitignore` 排除）。
+- **i18n 自检**：凡触及 UI / 文案 / i18n 资源，提交前必须运行 `python3 scripts/check_i18n.py all` 并在 change / `PLAN.md` 记录结果；脚本契约见 `openspec/specs/rules-tools/check-i18n/spec.md`。
 
-### 1.2 前端框架 & 布局引擎
+### 2.2 Brainflow / OpenSpec 流程
 
-- **Svelte + SvelteKit**
-- **Docking 布局：`dockview-core`**
-  - npm 包：`dockview-core`
-  - 用于 IDE 风格的 Panel / Tab / Split 布局，是唯一允许的 docking 引擎。
+1. **识别 change**：通过 `openspec/specs/doc-index/spec.md` + change 目录确认是否已有活跃 change；没有则创建。
+2. **流程**：proposal → design → plan/tasks → apply → archive，全程在对应文件落地记录。
+3. **任务绑定**：所有实现必须关联 change-id，并在 `PLAN.md` 或 `tasks.md` 登记。
+4. **冲突处理**：若实现与 spec 冲突，暂停实现，更新 change `tasks.md` 或提出新 change，等待人类确认。
 
-### 1.3 样式与布局
+### 2.3 安全 / 错误 / 日志 / 幂等
 
-- **原子 CSS 引擎：UnoCSS**
-  - npm 包：
-    - `unocss`
-    - `@unocss/vite`（通过 Vite 插件集成）
-  - 用途：
-    - 布局：`flex`, `flex-col`, `items-center`, `justify-between`, `gap-x-2`, `gap-y-3`…
-    - 尺寸：`h-screen`, `h-9`, `min-h-0`, `min-w-0`, `w-full`…
-    - 滚动：`overflow-auto`, `overflow-hidden`…
-    - 响应式：`sm:`, `md:`, `lg:` 前缀。
+- **安全**：遵循 least privilege，不引入未审查依赖，不泄露敏感信息。
+- **错误**：关键路径需明确错误处理与回退策略，记录异常上下文。
+- **日志**：沿用既有 logging 规范，避免写入敏感内容与噪声；重要操作需可追踪。
+- **幂等**：数据修改、脚本、迁移须确保重复执行安全；如无法保证，需明确前置检查与恢复机制。
 
-- **CSS 布局策略**
-  - **全局、Shell、面板容器、列表等：只使用 CSS Flex 布局。**
-  - **只有在封装组件内部（如课程表）才能使用 CSS Grid。**
+### 2.4 MCP 工具使用边界
 
-### 1.4 Runtime Design Tokens 引擎
-
-> 这些库只负责「算 token + 注入 CSS 变量」，不作为直接 UI 组件库使用。
-
-- **Fluent UI Runtime Tokens**
-  - npm 包：`@fluentui/web-components`
-  - 用法：通过 Fluent Design System / DesignToken API 初始化：
-    - 设定 `accentColor`, `neutralColor`, 亮暗模式等；
-    - 在运行时计算出 `--accent-*`, `--neutral-*` 等 Fluent token。
-
-- **Material 3 / mdui Runtime Tokens**
-  - npm 包：`mdui`（v2，基于 MD3 的 Web Components / Dynamic Color）
-  - 用法：用 mdui 提供的 MD3 动态色 API 生成：
-    - `--md-sys-color-*`, `--md-ref-palette-*`, `--md-sys-typescale-*` 等 MD3 token。
-
-### 1.5 文档 MCP
-
-> Agent 必须使用这些文档源，而不是凭“记忆”瞎猜 API。
-
-- **Svelte 文档 MCP**
-  - npm 包：`@sveltejs/mcp`
-  - 启动：`npx -y @sveltejs/mcp`（stdio MCP server）
-
-- **mdui 文档 MCP**
-  - npm 包：`@mdui/mcp`
-  - 启动：`npx -y @mdui/mcp`（stdio MCP server）
-
-> 推荐在 `.cursor/mcp.json` / `.vscode/mcp.json` / Copilot config 中统一配置：
->
-> ```jsonc
-> {
->   "mcpServers": {
->     "svelte": { "command": "npx", "args": ["-y", "@sveltejs/mcp"] },
->     "mdui":   { "command": "npx", "args": ["-y", "@mdui/mcp"] }
->   }
-> }
-> ```
+- **chrome-devtools MCP**：用于页面交互、截图、DOM 抓取；发现的 UI 问题同步到 `PLAN.md` 或 change。所有 Dock/List 面板必须遵守：
+  - **Rule0 可访问性**：正文与操作区只能通过单一纵向滚动容器访问，禁止出现“文字被遮挡且无法滚动”。
+  - **Rule1 视觉稳定**：常见分辨率下 UI 不能崩坏；控件截断/按钮不可点击视为 P0。
+  - **Rule2 退化顺序**：优先响应式布局，其次组件退化（按钮→菜单等），最后才允许滚动兜底。
+  - **Rule4 模板一致性**：同类列表必须复用统一模板组件，禁止各自为政。
+  - **Rule5 极端兜底**：竖屏/超窄宽度必须有明确 fallback，确保“再窄也能用”。
+- **openrouter-gemini MCP**：仅在需要视觉/布局/可访问性分析时调用；必须配合截图/DOM，禁止用于纯文本 spec 推演。
+  - 推荐设置 `max_tokens=4000`（更高值可能触发 'choices' 错误）。
+  - 输出仍被截断时：简化 query、拆分区域、多次查询（只问一种问题：布局/i18n/a11y 等）。
+  - Gemini 视觉分析前：先通过 memory MCP 检索 `ui-design-context`（及其关联模式），避免脱离设计语境。
+- **memory MCP**：按需、可追溯地检索（scoped query），禁止把原始输出整段复制到 `PLAN.md`；只提炼要点并附 `spec://...` URI。
+  - 任何 MCP workflow 提示 “scoped query” 约束时，必须显式引用 `spec://core-mcp#chunk-01`，便于未来回溯权威来源。
 
 ---
 
-## 2. 完整架构分层
+## 3. 显式状态机与合法性（Contract SM）
 
-从下到上：
+> 目标：为 “已选/待选/求解器/回滚/同步（未来 JWXT）” 提供**可审计、可验证、可扩展**的状态机契约，保证任何时刻的 term-state 都可判定为合法或给出明确修复路径。
 
-1. **Runtime Tokens 层（多源）**
-2. **Virtual Theme Layer（`--app-*` 语义 tokens）**
-3. **UnoCSS 工具层（布局 / spacing / responsive）**
-4. **Dockview Shell + Panel 容器**
-5. **UI Primitives（`App*` 组件）**
-6. **业务 Panels（All / Selected / Candidate / Solver / Settings / Sync / Calendar 等）**
+### 3.1 必须维护的“状态域”
 
-### 2.1 Runtime Tokens 层（底层）
+任何涉及下列任一状态域的改动，都必须在文档中显式建模（状态机/不变量/转移）并在实现中维持合法性：
 
-- Fluent runtime & mdui runtime 同时在页面初始化：
+- **Selection State**：已选/待选集合（以及 selection matrix / snapshot signature）。
+- **Desired/Solver Inputs**：愿望课程、Locks、软约束（求解输入）。
+- **Solver Outputs**：solver result、plan、apply/undo 语义。
+- **Action Log / Rollback**：可重放、可撤销、跨会话可恢复。
+- **Sync Layer**：本地 bundle ↔ 远端（GitHub/Gist；未来 JWXT）的一致性与冲突处理。
 
-  - Fluent：
-    - 通过 `@fluentui/web-components` 提供的设计系统接口设置：
-      - 基础主色 `accentColor`
-      - 中性色 `neutralColor`
-      - 明暗模式 / 对比度策略
-    - 得到一组 Fluent CSS 变量：`--accent-fill-rest`, `--accent-fill-hover`, `--neutral-layer-1`, `--neutral-foreground-1` 等。
+### 3.2 核心不变量（至少）
 
-  - mdui / MD3：
-    - 通过 mdui 的 MD3 Dynamic Color 能力（seed color / image）设置：
-      - 生成 `--md-sys-color-primary`, `--md-sys-color-surface`, `--md-sys-color-on-primary` 等。
+- **集合一致性**：同一课程 ID 不得同时存在于 “已选” 与 “待选”（若业务允许双栈需在状态机中明确例外与转换规则）。
+- **引用完整性**：Desired/Locks/SoftConstraints 中的 `courseHash/sectionId/...` 必须可在当前 term 的课程数据集中解析；无法解析的条目必须被隔离（orphan）并禁止进入求解/同步。
+- **回滚可决定性**：任何会改变 Selection/Desired 的动作都必须具备可逆路径（`undo plan` 或 `selectionSnapshot`），且回滚后能恢复到一个“可验证合法”的状态。
+- **同步原子性**：导入/合并远端 state bundle 必须先过 “state validation”；失败必须拒绝写入并给出冲突信息（或进入显式的 merge 流程），禁止半写入。
+- **跨域级联规则**：若删除/移除某课程导致 solver 侧存在关联（例如课程锁/组锁/软约束引用），必须有明确策略：
+  - 要么**自动级联清理**（并记录 action log + 可回滚），
+  - 要么**强制用户确认**后执行，
+  - 要么**保留为 orphan**（但需 UI 提示 + 不参与求解/同步）。
 
-- **禁止行为：**
-  - 业务层 / App 组件直接引用 `--accent-*` / `--neutral-*` / `--md-sys-*` 等变量。
+### 3.3 文档落地要求
 
-### 2.2 Virtual Theme Layer（唯一语义层）
+- 当改动触及上述状态域任一项时，必须同步更新 OpenSpec（建议至少更新 `openspec/specs/desired-system/design.md`、`openspec/specs/action-log/design.md`、`openspec/specs/data-pipeline/design.md` 对应章节），并在 change 的 `apply.md` 记录：
+  - 状态机/不变量变更点
+  - 验证方式（脚本/手测路径）
+  - 回滚/同步行为是否受影响
+- 若 OpenSpec 中缺少“状态机/不变量”章节，应优先补齐章节（而不是把状态机隐藏在代码实现里）。
 
-> 所有上层 UI 只允许使用 `--app-*` 变量，这些变量由 Virtual Theme Layer 映射到底层 Runtime Tokens。
+### 3.4 TermState 运行时合同（`docs/STATE.md`）
 
-目录约定：
+> `docs/STATE.md` 是 TermState/dispatch/effect/OCC 的**运行时合同**（可执行的状态机与不变量）。任何触及 Selection/Solver/JWXT/History/Sync 的实现改动，都必须先对齐该文档，并在 change 的 `tasks.md`/`apply.md` 记录差异与验证结果。
 
-```text
-src/lib/design-system/tokens/
-  _base.css            # 定义语义 token 名
-  theme.fluent.css     # data-theme='fluent' 时的映射
-  theme.material.css   # data-theme='material' 时的映射
-  theme.<extra>.css    # 未来可选：terminal / high-contrast 等
+- **唯一真相**：termState 必须可从 DB 完整恢复；禁止“store 里有、DB 里没有”的双源漂移。
+- **唯一写入口**：UI handler 不得直接写 store/repo/DB；所有写入必须走 `dispatch(TermAction)`，外部副作用必须通过 Effect Runner。
+- **显式故障态**：dispatch 后不变量失败不得静默 no-op；必须进入可见的故障态/阻断态（例如 FROZEN/NEEDS_PULL/INVALID_CONSTRAINT/FATAL_RESOLVE），防止二次污染。
+- **OCC 原子提交**：`term_state` 单表 + `commitTx`（expectedVersion 失败必须 reload 并提示重试），禁止半写入。
+- **Sync 先验校验**：导入/合并远端 bundle 必须先 validate（至少 termId + datasetSig）；失败必须拒写并给出冲突信息。
+- **外部输入先 parse**：DB payload / Gist bundle / JWXT response 等对外输入必须 Zod parse 后再进入 reducer/validator，禁止“未校验数据直接污染 termState”。
+- **JWXT 同步锁语义**：push 目标只来自 Selected；TTL 仅允许 `0/120s`；`syncState=NEEDS_PULL/FROZEN` 时必须阻断 preview/push（保持显式性）。
+- **派生只读模型**：课程列表可选性与提示需以 `deriveAvailability()`（四态 + blockers）为准，并受 `settings.courseListPolicy` 与 `solver.changeScope` 影响，避免面板各自为政。
+
+---
+
+## 4. Cluster Layer 入口（索引）
+
+> Cluster 具体内容存储于 memory MCP，只在需要时拉取。若缺失，请在 `PLAN.md` 标注 TODO 并通知人类补全。
+
+1. **Cluster: Schedule Engine** — `spec://cluster/schedule-engine`
+2. **Cluster: UI Templates** — `spec://cluster/ui-templates`
+3. **Cluster: Data Pipeline** — `spec://cluster/data-pipeline`
+4. **更多 Cluster**：参考 `openspec/specs/doc-index/spec.md`；命名遵循 `spec://cluster/<slug>`。
+
+---
+
+## 5. Change Layer 入口
+
+1. **绑定 change-id**：所有变更必须位于 `openspec/changes/<change-id>/`，包括 `project.md`, `tasks.md`, `apply.md` 等。
+2. **change memory**：用 `spec://change/<change-id>/...` 保存任务摘要与 delta，执行前需检索并贴入上下文。
+3. **流程要求**：Proposal → Design → Plan/Tasks → Apply → Archive。
+4. **活跃 change 索引**：查 doc-index 与 `openspec/changes/active`；若无现成 change，需要创建并即刻定义对应 memory URI。
+
+---
+
+## 6. 工作流与模板
+
+### 6.1 人类开发者流程（简版）
+
+1. 领取或创建 change-id，更新 `openspec/changes/<id>/project.md`。
+2. 通过 doc-index + memory MCP 检索相关 Cluster/Change 摘要；禁止直接扫全库。
+3. 在 `PLAN.md` 或 change `tasks.md` 写下 scope、约束、不确定点及 MCP 发现。
+4. 指派 coding agent 时提供：change-id、必读 memory URI、输出要求。
+5. 审查成果：核对引用的 memory URI 与 OpenSpec 是否一致；如不符，先更新 spec，再同步 memory。
+6. 合并前确认 OpenSpec、memory chunk、`PLAN.md` 记录全部同步。
+
+### 6.2 Coding agent Prompt 模板
+
+- **启动新 change**
+  ```
+  Change <id> 启动。请先阅读 AGENTS Core，然后通过 memory MCP 检索：
+  - spec://core-contract, spec://core-mcp
+  - spec://cluster/<cluster-slug>
+  - spec://change/<id>/tasks
+  将检索结果贴入上下文，列出关键约束后再开始执行。
+  ```
+- **需要更多规格信息**
+  ```
+  当前 memory 摘要不足。请在 memory MCP 以 "<keyword>" 检索相关 cluster/change 条目；若仍缺，请在 PLAN.md 记录问题并请求人类补充，禁止自行遍历整个 OpenSpec。
+  ```
+- **完成后自检**
+  ```
+  Implementation done. 请核对使用的 memory URI，更新对应 OpenSpec 章节，并调用 memory MCP 更新这些 URI（递增 version）。确认未触犯 AGENTS 禁止项后再提交结果。
+  ```
+
+---
+
+## 7. 附录
+
+### 7.1 Memory 同步流程（概述）
+
+1. 从 `openspec/specs/**` 或 `openspec/changes/**` 读取相应章节，按逻辑段落拆成 400–600 tokens。
+2. 生成 `Context/Contract/State/Edge/Links` 摘要，写入 memory MCP；URI 与 source path 对齐，附 tags（layer/domain/version/source/status）。
+3. OpenSpec 更新后，立即同步更新对应 URI，并在 `PLAN.md` 或 change `tasks.md` 标记 “memory sync done”。
+4. Change 归档时：保留 `spec://change/<id>/summary`，其余 chunk 标记 `status:archived`。
+5. 迁移说明见 `docs/memory-migration.md`。
+
+### 7.2 术语表 / 快速命令
+
+- TODO：补充 memory CLI、常用 MCP 命令、术语解释。
+
+### 7.3 简版 System Prompt（可直接用于 IDE / MCP 客户端）
+
+```
+You operate under a layered contract: Core → Cluster → Change → Memory → OpenSpec.
+
+1. Read AGENTS Core first; respect priorities, Brainflow, safety/logging rules.
+2. Before coding, fetch memory summaries in order:
+   a. Core entries `spec://core/*`
+   b. Relevant cluster entries `spec://cluster/<domain>`
+   c. Current change entries `spec://change/<id>`
+3. Only if summaries lack detail may you open the referenced OpenSpec sections; never bulk-read `openspec/specs/**`.
+
+Forbidden:
+- Bulk loading/pasting entire OpenSpec directories.
+- Modifying shared/core logic without an active change-id recorded in PLAN/tasks.
+- Coding without retrieving memory summaries via MCP.
 ```
 
-* `_base.css` 定义：
-  ```css
-  :root {
-    --app-color-bg:            #050508;
-    --app-color-bg-elevated:   #0b0f19;
-    --app-color-fg:            #f9fafb;
-    --app-color-primary:       #2563eb;
-    --app-color-primary-hover: #1d4ed8;
-    --app-color-border-subtle: #1f2933;
-
-    --app-radius-sm: 4px;
-    --app-radius-md: 6px;
-    --app-radius-lg: 10px;
-
-    --app-text-xs: 0.75rem;
-    --app-text-sm: 0.875rem;
-    --app-text-md: 1rem;
-  }
-  ```
-* `theme.fluent.css`：
-  ```css
-  :root[data-theme='fluent'] {
-    --app-color-bg:            var(--neutral-layer-1);
-    --app-color-bg-elevated:   var(--neutral-layer-2);
-    --app-color-fg:            var(--neutral-foreground-1);
-    --app-color-primary:       var(--accent-fill-rest);
-    --app-color-primary-hover: var(--accent-fill-hover);
-    --app-color-border-subtle: var(--neutral-stroke-1);
-
-    --app-radius-md: 4px;
-  }
-  ```
-* `theme.material.css`：
-  ```css
-  :root[data-theme='material'] {
-    --app-color-bg:            var(--md-sys-color-surface);
-    --app-color-bg-elevated:   var(--md-sys-color-surface-container-high);
-    --app-color-fg:            var(--md-sys-color-on-surface);
-    --app-color-primary:       var(--md-sys-color-primary);
-    --app-color-primary-hover: color-mix(in srgb, var(--md-sys-color-primary) 90%, black);
-    --app-color-border-subtle: color-mix(in srgb, var(--md-sys-color-outline-variant) 70%, transparent);
-
-    --app-radius-md: 12px;
-  }
-  ```
-
-**硬性约束（Contract A）：**
-
-1. 任何 Svelte 组件 / CSS 文件中， **只允许使用 `--app-*` tokens** 。
-2. 不允许业务代码直接写 `--accent-*` / `--neutral-*` / `--md-sys-*` / `--md-ref-*` 等底层 tokens 名。
-3. 修改底层映射只在 `theme.*.css` 内完成。
-
-### 2.3 UnoCSS 层（布局 / spacing）
-
-* UnoCSS 负责所有「可读性较强的工具类」：
-  * 布局：`flex`, `flex-col`, `items-center`, `justify-between`, `gap-x-2`, `gap-y-2`…
-  * 尺寸：`h-screen`, `h-9`, `w-full`, `min-h-0`, `min-w-0`…
-  * 滚动：`overflow-auto`, `overflow-hidden`…
-  * 响应式：`sm:*`, `md:*`, `lg:*`。
-
-**硬性约束（Contract B）：**
-
-* 不再引入 Tailwind / Bootstrap 之类 CSS 框架。
-* 普通 CSS / SCSS 不得再硬编码颜色 / 圆角 / 字体大小 / 间距等（这些全部通过 `--app-*` + UnoCSS 解决）。
-
 ---
-
-## 3. 布局策略：Flex Only + 封装 Grid
-
-### 3.1 flex / grid 的职责
-
-* **flex** ：所有 Shell / Panel 容器 / 列表 / 工具栏 / 设置页的默认布局方式；当 Dockview 挤压导致空间不足时，必须配合 ResizeObserver + 组件包装（如 `ResponsiveSwitch`）自动切换到「小号/紧凑布局」，而不是在同一布局里硬撑。
-* **grid** ：仅用于「真正的二维矩阵」场景（例如课程表），并且必须封装在专用组件内部。
-
-### 3.2 Shell & Panel 容器示例
-
-```svelte
-<!-- AppShell.svelte -->
-<svelte:body
-  data-theme={$theme}
-  class="bg-[var(--app-color-bg)] text-[var(--app-color-fg)] font-sans"
->
-  <div class="h-screen flex flex-col">
-    <header class="h-11 flex items-center justify-between px-4
-                   border-b border-[color:var(--app-color-border-subtle)]">
-      ...
-    </header>
-
-    <main class="flex-1 min-h-0 flex">
-      <aside class="hidden lg:flex w-56 flex-col border-r
-                     border-[color:var(--app-color-border-subtle)]">
-        ...
-      </aside>
-
-      <section class="flex-1 min-w-0 min-h-0">
-        <DockIDE />
-      </section>
-    </main>
-  </div>
-</svelte:body>
-```
-
-### 3.3 Grid 封装规则
-
-* 把课程表等真二维场景封装为独立组件，例如 `ScheduleGrid.svelte`：
-  ```svelte
-  <!-- ScheduleGrid.svelte（内部可以使用 grid） -->
-  <div class="grid grid-cols-[80px,repeat(7,1fr)] auto-rows-[64px] gap-px">
-    <slot />
-  </div>
-  ```
-* 业务 Panel 内只使用 `<ScheduleGrid>`，不直接写 `display: grid` 或 `grid-*`。
-
-**硬性约束（Contract C）：**
-
-1. 业务 Panel（All/Selected/Candidate/Solver/Settings/Sync/Calendar 等）内，布局只能使用 CSS flex。
-2. 如需使用 grid，必须新建 / 复用独立的封装组件（如 `ScheduleGrid`），并在其中实现 grid 细节。
-3. LLM / Agent 不得在业务 Panel 中直接生成 `display: grid` 或 UnoCSS 的 `grid-*` 类。
-
----
-
-## 4. UI Primitives（`App*` 组件层）
-
-所有业务 UI 必须通过 primitives 使用。
-
-### 4.1 组件列表（初始目标）
-
-* `AppButton`
-* `AppIconButton`
-* `AppInput`
-* `AppSelect`
-* `AppToggle`
-* `AppTabs` / `AppTab`
-* `AppDialog`
-* `AppCard`
-* `ListSurface`（列表容器）
-* `FilterBar`
-* `PaginationFooter`
-* `DockPanelShell`（面板通用外壳，含 header + body）
-
-### 4.2 基本实现规范
-
-示例：`AppButton.svelte`
-
-```svelte
-<script lang="ts">
-  export let variant: 'primary' | 'secondary' = 'primary';
-  export let size: 'sm' | 'md' = 'md';
-  const $$restProps = $props();
-</script>
-
-<button
-  class={`inline-flex items-center justify-center
-          ${size === 'sm' ? 'h-7 px-3 text-[var(--app-text-xs)]' : 'h-8 px-3 text-[var(--app-text-sm)]'}
-          rounded-[var(--app-radius-md)]
-          border border-[color:var(--app-color-border-subtle)]
-          transition-colors duration-150
-          ${variant === 'primary'
-            ? 'bg-[var(--app-color-primary)] text-[var(--app-color-bg)] hover:bg-[var(--app-color-primary-hover)]'
-            : 'bg-[var(--app-color-bg-elevated)] hover:bg-[color-mix(in_srgb,var(--app-color-bg-elevated)_90%,#000)]'}`}
-  {...$$restProps}
->
-  <slot />
-</button>
-```
-
-**硬性约束（Contract D）：**
-
-1. Panel / 业务代码中只允许使用 `App*` 组件 + 原生 HTML（配合 UnoCSS），不直接使用 Fluent/mdui 原生组件。
-2. 如需要借用 Fluent/mdui 的复杂组件（如 DatePicker / Menu），必须封装为 `AppDatePicker` / `AppMenu`，在内部集成，并在 docs 中写明行为。
-
----
-
-## 5. Dockview Shell / Workspace
-
-### 5.1 唯一 docking 引擎：`dockview-core`
-
-* npm 包：`dockview-core`。
-* 封装成 Svelte 组件，例如 `DockIDE.svelte`，内部统一管理：
-  * Docker root 容器；
-  * panel 注册 / 打开 / 关闭；
-  * 布局持久化。
-
-### 5.2 Shell 结构约定
-
-* Shell 只负责：
-  * sticky header；
-  * 主体区域 flex 布局；
-  * Dock 容器 `min-h-0`, `min-w-0`, `overflow-hidden`。
-
-**硬性约束（Contract E）：**
-
-1. 不要再引入 GoldenLayout 或其他 docking 库。
-2. 若 Agent 认为“某库更好用”，必须忽略，继续使用 `dockview-core` 并完善现有封装。
-
----
-
-## 6. 业务 Panels（全重写）
-
-旧前端 UI  **不再复用** ，仅保留少量业务逻辑 / store / 类型定义。Panel UI 全部重写为：
-
-* Svelte + UnoCSS + `App*` primitives + Dockview。
-
-目标 Panel 包括但不限于：
-
-* `AllPanel`
-* `SelectedPanel`
-* `CandidatePanel`
-* `SolverPanel`
-* `SettingsPanel`
-* `SyncPanel`
-* `CalendarPanel`
-
-**硬性约束（Contract F）：**
-
-1. 禁止从旧前端复制任何 HTML/SCSS/布局代码。
-2. 可以复用：
-   * 业务 store / 类型；
-   * 接口调用函数；
-   * 已经验证正确的算法/工具函数。
-3. Panel 的 UI 设计必须遵守本文件其它约束（Runtime Tokens、Virtual Theme、flex-only 等）。
-
----
-
-## 7. Agent 使用 MCP 的要求
-
-### 7.1 Svelte 相关任务
-
-* 当 Agent 要做以下事情时，必须优先使用 `@sveltejs/mcp` 提供的工具：
-  * Svelte 语法 / runes / store / 组件生命周期；
-  * SvelteKit 路由 / load 函数 / 表单操作；
-  * Svelte 特有的 SSR / hydration 行为。
-
-**流程：**
-
-1. 使用 `svelte` MCP 的文档工具（如 `list-sections` / `get-documentation`）查官方文档。
-2. 生成/修改 Svelte 代码后，调用 `svelte-autofixer` 直到无报错。
-
-### 7.2 mdui / MD3 相关任务
-
-* 涉及：
-  * mdui 组件；
-  * MD3 动态色配置；
-  * `--md-sys-*` tokens；
-  * mdui 提供的动画 / 交互样式。
-
-**流程：**
-
-1. 使用 `mdui` MCP 文档工具查找对应组件 / token；
-2. 如需修改 runtime token 初始化逻辑，应遵循官方推荐使用方式。
-
----
-
-## 8. 开发流程 / Checklist（简版）
-
-### 新增一个 Panel 的步骤（Agent & 人类通用）
-
-1. 定义 Panel 的  **数据需求 / store 接口** （只涉及业务逻辑，不碰 UI）。
-2. 在 `src/lib/ui/primitives/` 中确认需要的 `App*` 组件是否齐全，不够则先补齐。
-3. 在 `src/lib/panels/` 下创建 Panel 组件：
-   * 外壳：`class="w-full h-full flex flex-col"`
-   * 头部：`header` 使用 flex + `App*`；
-   * 主体：`section` 为 `flex-1 min-h-0 overflow-auto`，内部使用 primitives 和 flex（如需网格表格则封装 grid 组件）。
-4. 将 Panel 挂到 Dockview Shell（`DockIDE.svelte`）中，通过注册 panel 类型 / 打开时注入 props。
-5. 使用 Virtual Theme Tokens / UnoCSS 类对齐视觉规范，不写任何硬编码颜色。
-6. 跑 `npm run check` 等检查及基本端到端验证。
-
----
-
-## 9. 禁止事项总表（Do NOT）
-
-* ❌ 把 `flex` / `grid` 当成 npm 包或框架来安装或 require。
-* ❌ 在业务代码中直接使用 Fluent / MD3 原生 CSS 变量，如：
-  * `var(--accent-fill-rest)`、`var(--md-sys-color-primary)` 等。
-* ❌ 在 Panel 中直接使用 CSS Grid / UnoCSS `grid-*` 类（必须通过封装组件）。
-* ❌ 引入任意新的 CSS/布局框架（Tailwind / Bootstrap / Chakra / MUI 等）。
-* ❌ 复制旧前端的 HTML / SCSS / 布局代码。
-* ❌ 在普通 CSS/SCSS 里硬编码颜色 / 圆角 / 字体大小 / 间距。
-
----
-
-如有新约束（例如某些 Panel 需要特例布局、某主题需要额外 token），请在本文件末尾追加章节，并在 PR 描述中显式提及，便于 Agent 读取到最新规则。

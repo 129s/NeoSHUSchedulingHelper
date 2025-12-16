@@ -32,10 +32,7 @@
 - 保留内部 **density 模式** 概念（comfortable/compact），但限定为组件内部的样式开关：
   - 仅通过 token pack 调整行高/间距/字号，不改变产品语义。  
   - 用户不会看到「紧凑模式」这个文案；所有 density 切换是内部实现细节。
-- i18n 对 Dock / Fallback 的描述调整为：
-  - `modeDock`: Dock 布局 / Dock layout  
-  - `modeFallback`: 标签布局 / Tabbed layout  
-  - `narrowMessage`: 以「为保证可用性自动切换到标签布局」描述行为，而非「进入紧凑模式」。
+- i18n 对 Dock / Fallback 的文案只描述「工作区」与「标签布局」两种状态，不再暴露 “Dock 布局” 等内部术语，也不提供模式切换文案。保留 `narrowMessage` 强调「为保证可用性自动切换到标签布局」的行为。
 
 ## 4. CourseCard / 课程组 / Capacity Ring
 
@@ -77,4 +74,3 @@
   - `spec://cluster/ui-templates`（density 模式与 clamp 行为）  
   - `spec://cluster/ui-course-cards`（capacity ring vs 文本徽标）  
   - `spec://cluster/ui-issues#chunk-09`（已在 docs/memory-chunks/ui-issues.md 中定义）。
-

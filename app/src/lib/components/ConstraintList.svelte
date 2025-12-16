@@ -15,12 +15,13 @@
 </script>
 
 <script lang="ts">
-	import ListSurface from '$lib/components/ListSurface.svelte';
+	import AppListCard from '$lib/components/AppListCard.svelte';
+	import CardActionBar from '$lib/components/CardActionBar.svelte';
+	import AppButton from '$lib/primitives/AppButton.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import { dictionary as dictionaryStore, translator } from '$lib/i18n';
 	import type { Dictionary } from '$lib/i18n';
-	import '$lib/styles/constraint-list.scss';
 
-	export let title: string;
 	export let items: ConstraintItem[] = [];
 	export let onRemove: (item: ConstraintItem) => void;
 	export let onConvert: ((item: ConstraintItem) => void) | undefined = undefined;
@@ -52,8 +53,8 @@
 	type ConstraintTypeKey = keyof typeof defaultConstraintTypeLabels;
 	const constraintTypeOrder: ConstraintTypeKey[] = ['group', 'section', 'time', 'course', 'teacher', 'custom'];
 
-let t = (key: string) => key;
-let dict: Dictionary | null = null;
+	let t = (key: string) => key;
+	let dict: Dictionary | null = null;
 	let resolvedSearchPlaceholder = 'Search constraints';
 	let constraintTypeLabels = defaultConstraintTypeLabels;
 	let filterGroups: Array<{
@@ -116,6 +117,13 @@ $: dict = $dictionaryStore as Dictionary;
 		}
 	];
 
+	const pillBaseClass =
+		'inline-flex items-center gap-1 rounded-full px-3 py-1 text-[var(--app-text-xs)] bg-[color-mix(in_srgb,var(--app-color-bg-elevated)_90%,var(--app-color-fg)_10%)] text-[var(--app-color-fg)]';
+	const hardPillClass =
+		'bg-[color-mix(in_srgb,var(--app-color-primary)_15%,var(--app-color-bg))] text-[var(--app-color-primary)]';
+	const softPillClass =
+		'bg-[color-mix(in_srgb,var(--app-color-danger)_12%,var(--app-color-bg))] text-[var(--app-color-danger)]';
+
 	const getTypeLabel = (type?: ConstraintItem['type']) => {
 		if (!type) return '';
 		return constraintTypeLabels[type as ConstraintTypeKey] ?? type;
@@ -161,46 +169,46 @@ $: dict = $dictionaryStore as Dictionary;
 	})();
 </script>
 
-<ListSurface title={title} count={items.length}>
-	<svelte:fragment slot="header-actions">
-		{#if primaryActionLabel || secondaryActionLabel}
-			<div class="constraint-actions">
-				{#if secondaryActionLabel}
-					<button type="button" class="ghost" on:click={onSecondaryAction}>
-						{secondaryActionLabel}
-					</button>
-				{/if}
-				{#if primaryActionLabel}
-					<button type="button" class="primary" on:click={onPrimaryAction}>
-						{primaryActionLabel}
-					</button>
-				{/if}
-			</div>
-		{/if}
-	</svelte:fragment>
+<div class="flex flex-col gap-3 min-w-0">
+	{#if primaryActionLabel || secondaryActionLabel}
+		<CardActionBar class="justify-start">
+			{#if secondaryActionLabel}
+				<AppButton variant="secondary" size="sm" on:click={() => onSecondaryAction?.()}>
+					{secondaryActionLabel}
+				</AppButton>
+			{/if}
+			{#if primaryActionLabel}
+				<AppButton variant="primary" size="sm" on:click={() => onPrimaryAction?.()}>
+					{primaryActionLabel}
+				</AppButton>
+			{/if}
+		</CardActionBar>
+	{/if}
 
-	<div slot="search" class="constraint-search">
+	<div class="w-full min-w-0">
 		<input
 			type="search"
+			class="w-full min-w-0 max-w-[420px] rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)] placeholder:text-[var(--app-color-fg-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-color-primary)] focus:ring-offset-1 focus:ring-offset-[color:var(--app-color-bg)]"
 			placeholder={resolvedSearchPlaceholder}
 			bind:value={query}
 			aria-label={resolvedSearchPlaceholder}
 		/>
 	</div>
 
-	<div slot="filters" class="constraint-filters">
+	<div class="flex flex-col gap-3">
 		{#each filterGroups as group (group.key)}
-			<div class="chip-group">
-				<span class="chip-label">{group.label}</span>
-				<div class="chip-list">
+			<div class="flex flex-col gap-1.5">
+				<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{group.label}</span>
+				<div class="flex flex-wrap gap-2">
 					{#each group.options as option (option.value)}
-						<button
-							type="button"
-							class:active={group.set.has(option.value)}
+						<Chip
+							selectable
+							selected={group.set.has(option.value)}
+							variant={group.set.has(option.value) ? 'accent' : 'default'}
 							on:click={() => toggleChip(group.key, option.value)}
 						>
 							{option.label}
-						</button>
+						</Chip>
 					{/each}
 				</div>
 			</div>
@@ -208,62 +216,67 @@ $: dict = $dictionaryStore as Dictionary;
 	</div>
 
 	{#if !filtered.length}
-		<p class="muted constraint-empty">{t('panels.solver.constraintEmpty')}</p>
+		<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t('panels.solver.constraintEmpty')}</p>
 	{:else}
-		<ul class="constraint-items">
+		<ul class="flex list-none flex-col gap-3 p-0">
 			{#each filtered as item (item.id)}
 				<li>
-					<div class="meta">
-						<div class="label">
-							<strong>{item.label}</strong>
-							{#if item.detail}<small>{item.detail}</small>{/if}
-						</div>
-						<div class="tags">
-							<span class={`pill ${item.priority === 'hard' ? 'hard' : 'soft'}`}>
+					<AppListCard
+						title={item.label}
+						subtitle={item.detail ?? null}
+						class="lg:flex-row lg:items-start lg:justify-between"
+					>
+						<div slot="meta" class="flex flex-wrap gap-2 pt-1">
+							<span class={`${pillBaseClass} ${item.priority === 'hard' ? hardPillClass : softPillClass}`}>
 								{item.priority === 'hard' ? t('dropdowns.hard') : t('dropdowns.soft')}
 							</span>
 							{#if item.direction}
-								<span class="pill secondary">
+								<span class={pillBaseClass}>
 									{item.direction === 'include' ? t('dropdowns.include') : t('dropdowns.exclude')}
 								</span>
 							{/if}
 							{#if item.type}
-								<span class="pill secondary">{getTypeLabel(item.type)}</span>
+								<span class={pillBaseClass}>{getTypeLabel(item.type)}</span>
 							{/if}
 							{#if item.status}
-								<span class="pill secondary">
+								<span class={pillBaseClass}>
 									{item.status === 'disabled' ? t('dropdowns.disabled') : t('dropdowns.enabled')}
 								</span>
 							{/if}
 							{#if item.source}
-								<span class="pill secondary">{getSourceLabel(item.source)}</span>
+								<span class={pillBaseClass}>{getSourceLabel(item.source)}</span>
 							{/if}
 							{#if item.tags}
 								{#each item.tags as tag}
-									<span class="pill secondary">{tag}</span>
+									<span class={pillBaseClass}>{tag}</span>
 								{/each}
 							{/if}
 							{#if typeof item.weight === 'number'}
-								<span class="pill secondary">
+								<span class={pillBaseClass}>
 									{t('panels.solver.quickWeight')} {item.weight}
 								</span>
 							{/if}
 						</div>
-					</div>
-					<div class="actions">
-						{#if onConvert && (!convertibleKinds || convertibleKinds.includes(item.kind))}
-							<button type="button" class="ghost" on:click={() => onConvert?.(item)}>
-								{item.priority === 'hard'
-									? t('panels.solver.convertToSoft')
-									: t('panels.solver.convertToHard')}
-							</button>
-						{/if}
-						<button type="button" class="danger" on:click={() => onRemove(item)}>
-							{t('panels.solver.removeConstraint')}
-						</button>
-					</div>
+						<CardActionBar slot="actions" class="justify-end">
+							{#if onConvert && (!convertibleKinds || convertibleKinds.includes(item.kind))}
+								<AppButton variant="secondary" size="sm" on:click={() => onConvert?.(item)}>
+									{item.priority === 'hard'
+										? t('panels.solver.convertToSoft')
+										: t('panels.solver.convertToHard')}
+								</AppButton>
+							{/if}
+							<AppButton
+								variant="secondary"
+								size="sm"
+								class="text-[var(--app-color-danger)] border-[color:var(--app-color-danger)]"
+								on:click={() => onRemove(item)}
+							>
+								{t('panels.solver.removeConstraint')}
+							</AppButton>
+						</CardActionBar>
+					</AppListCard>
 				</li>
 			{/each}
 		</ul>
 	{/if}
-</ListSurface>
+</div>

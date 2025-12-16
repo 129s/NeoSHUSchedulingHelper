@@ -1,9 +1,13 @@
 .dockview-theme-app {
-  --dv-tabs-and-actions-container-height: 40px;
+  --dv-tabs-and-actions-container-height: 36px;
   --dv-tabs-and-actions-container-font-size: var(--app-text-sm);
   --dv-tab-font-size: var(--app-text-sm);
   --dv-tab-margin: 0;
   --dv-border-radius: var(--app-radius-md);
+  --dv-overlay-z-index: 4000;
+  --dv-drag-over-background-color: color-mix(in srgb, var(--app-color-primary) 20%, transparent);
+  --dv-drag-over-border-color: color-mix(in srgb, var(--app-color-primary) 60%, transparent);
+  --dv-drag-over-border: 2px solid color-mix(in srgb, var(--app-color-primary) 70%, var(--app-color-border-subtle));
   --dv-tabs-and-actions-container-background-color: var(--app-color-bg-elevated);
   --dv-group-view-background-color: transparent;
   --dv-activegroup-visiblepanel-tab-background-color: var(--app-color-bg);
@@ -26,14 +30,14 @@
 
 .dockview-theme-app .dv-groupview {
   border-radius: var(--app-radius-lg);
-  padding: 0.25rem;
+  padding: var(--app-space-1);
 }
 
 .dockview-theme-app .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--app-color-border-subtle);
-  gap: 0.5rem;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  gap: var(--app-space-1);
+  padding-left: var(--app-space-2);
+  padding-right: var(--app-space-2);
 }
 
 .dockview-theme-app .dv-tabs-and-actions-container .dv-tab {
@@ -43,7 +47,7 @@
 }
 
 .dockview-theme-app .dv-content-container {
-  padding: 0.5rem;
+  padding: var(--app-space-2);
   background: transparent;
 }
 
@@ -51,7 +55,7 @@
   border-radius: var(--app-radius-lg);
   background: var(--app-color-bg);
   border: 1px solid color-mix(in srgb, var(--app-color-border-subtle) 80%, transparent);
-  padding: 0.5rem;
+  padding: var(--app-space-2);
   min-height: 0;
   display: flex;
   box-shadow: 0 10px 30px color-mix(in srgb, var(--app-color-fg) 5%, transparent);

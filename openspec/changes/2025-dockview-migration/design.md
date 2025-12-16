@@ -56,6 +56,10 @@ This honors the new architecture while still satisfying ListSurface/List templat
    - Wires Dockview tab titles to i18n keys so locale toggles refresh automatically (`t('panels.*')`).
 2. Provide fallback messaging when Dockview fails to initialize (Rule0). Instead of spinning MinimalWorkspace, show a tokenized alert with an \"Reload layout\" action.
 3. Create wrappers for Dockview tab renders to apply Virtual Theme colors (tabs, splitter handles, backgrounds).
+4. Tune Dockview DnD ergonomics to behave closer to VS Code:
+   - Root-edge docking uses a percentage-based overlay model (not the default 10px activation / 20px preview strip).
+   - Enable floating groups (panels can be torn off into free-floating windows within the viewport) unless explicitly disabled for mobile fallback.
+   - Default layout includes a “品字” structure: top row split left/right, plus a bottom group spanning full width.
 
 ## 6. UI Primitives (Layer 5)
 1. Introduce `AppButton`, `AppInput`, `AppTabs`, `AppDialog`, etc., implemented with UnoCSS classes and Virtual Theme variables. Example:

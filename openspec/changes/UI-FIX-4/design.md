@@ -4,7 +4,7 @@
 | Component/File | Problem | Planned Fix |
 | -------------- | ------- | ----------- |
 | `app/src/lib/apps/DockWorkspace.svelte` + `app/src/lib/styles/apps/dock-workspace.scss` | Dock header 缺列、滚动条遮挡 | 重算 grid 列宽（含周日列）、在 header/body 间添加 padding + scrollbar gutter，使用 `padding-inline-end` 与 `scrollbar-gutter: stable both-edges` 让 overlay 不压内容。 |
-| `app/src/lib/components/CourseCard.svelte` + `app/src/lib/styles/components/course-card.scss` | 标题被硬截断，地点重复 | 用 flex+wrap + CSS clamp 允许 2 行标题，同时加 `title={course.title}`；review 数据渲染逻辑，确保地点/教室/周次组合仅生成一次字符串。 |
+| `app/src/lib/components/CourseCard.svelte`（含组件内 `<style>`） | 标题被硬截断，地点重复 | 用 flex+wrap + CSS clamp 允许 2 行标题，同时加 `title={course.title}`；review 数据渲染逻辑，确保地点/教室/周次组合仅生成一次字符串。 |
 | `app/src/lib/apps/SolverPanel.svelte` | Intro 文案截断、控件漂浮 | 确认 i18n key（`panels.solver.intro` 等），恢复完整文本；使用现有 `ListSurface` slots，确保 FilterBar/controls 嵌入 `slot="filters"` / body。 |
 
 ## Implementation Notes

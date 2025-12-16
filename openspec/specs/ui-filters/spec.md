@@ -5,7 +5,7 @@ Describe the shared filter experience used by All/Selected/Candidate/Solver/Diag
 
 ## Modes
 1. **Simple section**: search field (course name/code/teacher), inline controls, and quick chips (mode, status, conflict, campus, language). Always visible, even when advanced drawer is open.
-2. **Advanced section**: collapsible drawer containing detailed fields (course code/name, teacher name/ID, teaching language, teaching mode, specialType, sports flag, campus, college, major, credit min/max, week parity/span grid). Drawer slides inside the FilterBar container without hiding the simple chips.
+2. **Advanced section**: collapsible drawer containing detailed fields (course code/name, teacher name/ID, teaching language, exception courses (unselectable/closed), special tags (dataset-derived, non-hardcoded), sports-only toggle, campus, college, major, credit min/max, week parity/span grid). Drawer slides inside the FilterBar container without hiding the simple chips.
 
 ## Shared Layout Rules
 - `<FilterBar>` is a flex column wrapper: sections `mode`, `simple`, `view-controls`, `chips`, `settings`, `advanced`. Each section uses UnoCSS utilities (`flex`, `flex-wrap`, `gap-*`) and `--app-*` tokens.
@@ -25,18 +25,17 @@ Describe the shared filter experience used by All/Selected/Candidate/Solver/Diag
 - **Status**:
   - All/Candidate panels: 全部 / 待选 / 已选.
   - Selected panel: 全部 / 已提交 / 待提交.
-- **Teaching mode**: 中文 / 全英 / 双语 / 未指定.
-- **Special type**: 体育 / 其他特殊.
-- **Language** (derived field).
+- **Teaching language**: 中文 / 全英 / 双语 / 未指定.
+- **Special (sports)**: 仅体育 / 排除体育.
 - **Campus**: multi-select chips from dataset.
 - **Sort**: dropdown below FilterBar (always visible).
 
 ### Advanced Fields
 - Text fields with match-mode popover (exact / contains / regex + case toggle). Default = contains, case insensitive.
-- Dropdowns/multi-selects sourced from dataset (teaching mode, college, major, course attribute, campus).
+- Dropdowns/multi-selects sourced from dataset (college, major, course attribute, campus).
 - Credit min/max (empty => 0/∞).
 - Week parity/span grid (single choice per dimension).
-- Sports flag (checkbox), other special types fallback text filter.
+- Special tags (multi-select): derived from dataset free-text fields (e.g. `selectionNote`, constraints) via heuristic tokenization; do not hardcode domain keyword lists.
 - Buttons: “应用” (apply) and “清空”.
 
 ### Solver Intent Hooks

@@ -1,31 +1,32 @@
-<script lang="ts">
-import DockPanelShell from '$lib/components/DockPanelShell.svelte';
-import ListSurface from '$lib/components/ListSurface.svelte';
-import { datasetMeta } from '$lib/data/catalog/courseCatalog';
-import { encodeSelectionSnapshotBase64, importSelectionSnapshotBase64 } from '$lib/utils/selectionPersistence';
-import { loadStateBundle } from '$lib/data/termState';
-import { syncStateBundle } from '$lib/data/github/stateSync';
-import { githubToken, clearGithubToken } from '$lib/stores/githubAuth';
-import { get } from 'svelte/store';
-import { onMount } from 'svelte';
-import { translator } from '$lib/i18n';
-import type { TranslateFn } from '$lib/i18n';
-import { storageState, type StoragePreferencesSnapshot } from '$lib/stores/storageState';
-import '$lib/styles/panels/sync-panel.scss';
+<svelte:options runes={false} />
 
-	let exportStatus = '';
-	let importStatus = '';
-	let selectionBusy = false;
-	let snapshotBase64 = '';
-	let importBase64 = '';
+<script lang="ts">
+	import DockPanelShell from '$lib/components/DockPanelShell.svelte';
+	import ListSurface from '$lib/components/ListSurface.svelte';
+	import { datasetMeta } from '$lib/data/catalog/courseCatalog';
+	import { termState, ensureTermStateLoaded, dispatchTermActionWithEffects } from '$lib/stores/termStateStore';
+	import { githubToken, clearGithubToken } from '$lib/stores/githubAuth';
+	import AppControlPanel from '$lib/primitives/AppControlPanel.svelte';
+	import AppField from '$lib/primitives/AppField.svelte';
+	import AppButton from '$lib/primitives/AppButton.svelte';
+	import AppDialog from '$lib/primitives/AppDialog.svelte';
+	import { get } from 'svelte/store';
+	import { onMount } from 'svelte';
+	import { translator } from '$lib/i18n';
+	import type { TranslateFn } from '$lib/i18n';
+	import { storageState, type StoragePreferencesSnapshot } from '$lib/stores/storageState';
+
 	let gistId = '';
 	let gistNote = '';
 	let gistPublic = false;
 	let gistStatus = '';
-let gistBusy = false;
-let storageSnapshot: StoragePreferencesSnapshot | null = null;
+	let gistBusy = false;
+	let storageSnapshot: StoragePreferencesSnapshot | null = null;
+	let confirmOpen = false;
+	let confirmBusy = false;
+	let confirmError = '';
 
-let t: TranslateFn = (key) => key;
+	let t: TranslateFn = (key) => key;
 	$: t = $translator;
 	$: storageSnapshot = $storageState;
 
@@ -40,55 +41,7 @@ let t: TranslateFn = (key) => key;
 
 	const hasGithubConfig = Boolean(import.meta.env?.PUBLIC_GITHUB_CLIENT_ID);
 
-	async function generateSnapshot() {
-		try {
-			selectionBusy = true;
-			snapshotBase64 = encodeSelectionSnapshotBase64();
-			exportStatus = t('panels.sync.statuses.generated');
-		} catch (error) {
-			exportStatus = format('panels.sync.statuses.exportFailed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
-		} finally {
-			selectionBusy = false;
-		}
-	}
-
-	function copySnapshot() {
-		if (!snapshotBase64) return;
-		navigator.clipboard?.writeText(snapshotBase64).then(
-			() => {
-				exportStatus = t('panels.sync.statuses.copySuccess');
-			},
-			() => {
-				exportStatus = t('panels.sync.statuses.copyFailed');
-			}
-		);
-	}
-
-	async function handleImport() {
-		if (!importBase64.trim()) {
-			importStatus = t('panels.sync.statuses.importEmpty');
-			return;
-		}
-		try {
-			selectionBusy = true;
-			const result = importSelectionSnapshotBase64(importBase64);
-			importStatus = format('panels.sync.statuses.importSuccess', {
-				selected: result.selectedApplied,
-				wishlist: result.wishlistApplied
-			});
-			if (result.ignored.length) {
-				importStatus += format('panels.sync.statuses.importIgnored', { count: result.ignored.length });
-			}
-		} catch (error) {
-			importStatus = format('panels.sync.statuses.importFailed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
-		} finally {
-			selectionBusy = false;
-		}
-	}
+	$: void ensureTermStateLoaded();
 
 	function startGithubLogin() {
 		if (!hasGithubConfig) {
@@ -132,17 +85,41 @@ let t: TranslateFn = (key) => key;
 		try {
 			gistBusy = true;
 			gistStatus = t('panels.sync.statuses.syncing');
-			const bundle = await loadStateBundle();
-			const result = await syncStateBundle(bundle, {
+			const state = $termState;
+			if (!state) {
+				gistStatus = t('panels.sync.statuses.termStateMissing');
+				return;
+			}
+
+			const { result, effectsDone } = dispatchTermActionWithEffects({
+				type: 'SYNC_GIST_EXPORT',
 				token,
 				gistId: gistId.trim() || undefined,
 				note: gistNote.trim() || undefined,
 				public: gistPublic
 			});
-			gistStatus = format('panels.sync.statuses.syncSuccess', { url: result.url });
-			if (!gistId.trim()) {
-				gistId = result.id;
+			const dispatchResult = await result;
+			if (!dispatchResult.ok) {
+				gistStatus = format('panels.sync.statuses.syncFailed', { error: dispatchResult.error.message });
+				return;
 			}
+			await effectsDone;
+			const after = get(termState);
+			const last = after?.history.entries
+				.slice()
+				.reverse()
+				.find((entry) => entry.type === 'sync' && entry.id.startsWith('sync:export-'));
+			const details = last?.details as Record<string, unknown> | undefined;
+			if (last?.id.startsWith('sync:export-ok:') && details && typeof details.url === 'string') {
+				gistStatus = format('panels.sync.statuses.syncSuccess', { url: details.url });
+				if (!gistId.trim() && typeof details.gistId === 'string') gistId = details.gistId;
+				return;
+			}
+			if (last?.id.startsWith('sync:export-err:') && details && typeof details.error === 'string') {
+				gistStatus = format('panels.sync.statuses.syncFailed', { error: details.error });
+				return;
+			}
+			gistStatus = t('panels.sync.statuses.syncDone');
 		} catch (error) {
 			gistStatus = format('panels.sync.statuses.syncFailed', {
 				error: error instanceof Error ? error.message : String(error)
@@ -151,33 +128,79 @@ let t: TranslateFn = (key) => key;
 			gistBusy = false;
 		}
 	}
+
+	async function handleGistImportConfirm() {
+		const token = requireGithubToken();
+		if (!token) return;
+		const trimmed = gistId.trim();
+		if (!trimmed) {
+			gistStatus = t('panels.sync.statuses.gistIdRequired');
+			return;
+		}
+
+		try {
+			confirmBusy = true;
+			confirmError = '';
+			gistStatus = t('panels.sync.statuses.gistImporting');
+			const { result, effectsDone } = dispatchTermActionWithEffects({
+				type: 'SYNC_GIST_IMPORT_REPLACE',
+				token,
+				gistId: trimmed
+			});
+			const dispatchResult = await result;
+			if (!dispatchResult.ok) {
+				confirmError = dispatchResult.error.message;
+				gistStatus = format('panels.sync.statuses.importFailed', { error: dispatchResult.error.message });
+				return;
+			}
+			await effectsDone;
+			const after = get(termState);
+			const last = after?.history.entries
+				.slice()
+				.reverse()
+				.find((entry) => entry.type === 'sync' && entry.id.startsWith('sync:import-'));
+			const details = last?.details as Record<string, unknown> | undefined;
+			if (last?.id.startsWith('sync:import-ok:')) {
+				gistStatus = t('panels.sync.statuses.gistImportSuccess');
+				confirmOpen = false;
+				return;
+			}
+			if (last?.id.startsWith('sync:import-err:') && details && typeof details.error === 'string') {
+				confirmError = details.error;
+				gistStatus = format('panels.sync.statuses.importFailed', { error: details.error });
+				return;
+			}
+			gistStatus = t('panels.sync.statuses.gistImportDone');
+			confirmOpen = false;
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			confirmError = msg;
+			gistStatus = format('panels.sync.statuses.importFailed', { error: msg });
+		} finally {
+			confirmBusy = false;
+		}
+	}
 </script>
 
-<DockPanelShell>
-<ListSurface
+<DockPanelShell class="flex-1 min-h-0">
+	<ListSurface
 		title={t('panels.sync.title')}
 		subtitle={format('panels.sync.currentTerm', { term: datasetMeta.semester ?? '' })}
 		density="comfortable"
 		enableStickyToggle={true}
 	>
-		<div class="sync-grid">
+		<div class="flex flex-wrap items-start gap-5 min-w-0">
 			{#if storageSnapshot}
-				<div class="card">
-					<h4>{t('panels.sync.storageTitle')}</h4>
-					<p>{t('panels.sync.storageDescription')}</p>
-					<ul class="storage-list">
-						<li>
-							{t('panels.sync.storageLanguage', { locale: storageSnapshot.locale })}
-						</li>
-						<li>
-							{t('panels.sync.storageTheme', { theme: storageSnapshot.themeId })}
-						</li>
+				<section class="flex-[1_1_520px] min-w-[min(360px,100%)] rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-4 shadow-[var(--app-shadow-soft)]">
+					<h4 class="text-[var(--app-text-md)] font-semibold text-[var(--app-color-fg)]">{t('panels.sync.storageTitle')}</h4>
+					<p class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t('panels.sync.storageDescription')}</p>
+					<ul class="mt-3 list-disc pl-5 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">
+						<li>{t('panels.sync.storageLanguage', { locale: storageSnapshot.locale })}</li>
+						<li>{t('panels.sync.storageTheme', { theme: storageSnapshot.themeId })}</li>
 						<li>
 							{t('panels.sync.storagePagination', {
 								mode:
-									storageSnapshot.pagination.mode === 'paged'
-										? t('settings.paged')
-										: t('settings.continuous'),
+									storageSnapshot.pagination.mode === 'paged' ? t('settings.paged') : t('settings.continuous'),
 								size: storageSnapshot.pagination.pageSize,
 								neighbors: storageSnapshot.pagination.pageNeighbors
 							})}
@@ -206,85 +229,94 @@ let t: TranslateFn = (key) => key;
 							})}
 						</li>
 					</ul>
-				</div>
+				</section>
 			{/if}
-			<div class="card">
-				<h4>{t('panels.sync.exportTitle')}</h4>
-				<p>{t('panels.sync.exportDescription')}</p>
-				<div class="stack">
-					<textarea readonly placeholder={t('panels.sync.exportPlaceholder')} value={snapshotBase64} rows="5"></textarea>
-					<div class="actions">
-						<button class="primary" on:click={generateSnapshot} disabled={selectionBusy}>
-							{t('panels.sync.exportButton')}
-						</button>
-						<button class="secondary" on:click={copySnapshot} disabled={!snapshotBase64}>
-							{t('panels.sync.copyButton')}
-						</button>
-					</div>
-				</div>
-				{#if exportStatus}
-					<p class="status">{exportStatus}</p>
-				{/if}
-			</div>
-			<div class="card">
-				<h4>{t('panels.sync.importTitle')}</h4>
-				<p>{t('panels.sync.importDescription')}</p>
-				<div class="stack">
-					<textarea placeholder={t('panels.sync.importPlaceholder')} bind:value={importBase64} rows="5"></textarea>
-					<button class="primary" on:click={handleImport} disabled={selectionBusy}>
-						{t('panels.sync.importButton')}
-					</button>
-				</div>
-				{#if importStatus}
-					<p class="status">{importStatus}</p>
-				{/if}
-			</div>
-			<div class="card gist-card">
-				<h4>{t('panels.sync.gistTitle')}</h4>
-				<p>{t('panels.sync.gistDescription')}</p>
-				<form class="gist-form" on:submit|preventDefault={handleGistSync}>
+
+			<AppControlPanel
+				title={t('panels.sync.gistTitle')}
+				description={t('panels.sync.gistDescription')}
+				density="comfortable"
+				class="flex-[1_1_520px] min-w-[min(360px,100%)]"
+			>
+				<form class="flex flex-col gap-3" on:submit|preventDefault={handleGistSync}>
 					{#if $githubToken}
-						<div class="login-state">
-							<span>{t('panels.sync.gistLoggedIn')}</span>
-							<button type="button" class="secondary" on:click={clearGithubToken}>
+						<div class="flex flex-wrap items-center justify-between gap-2 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)] min-w-0">
+							<span class="min-w-0 break-words [overflow-wrap:anywhere]">{t('panels.sync.gistLoggedIn')}</span>
+							<AppButton variant="secondary" size="sm" on:click={clearGithubToken}>
 								{t('panels.sync.logoutGithub')}
-							</button>
+							</AppButton>
 						</div>
 					{:else}
-						<button type="button" class="primary" on:click={startGithubLogin}>
+						<AppButton type="button" variant="primary" size="sm" on:click={startGithubLogin}>
 							{t('panels.sync.loginGithub')}
-						</button>
+						</AppButton>
 					{/if}
-					<label class="form-group">
-						<span>{t('panels.sync.gistIdLabel')}</span>
+					<AppField label={t('panels.sync.gistIdLabel')}>
 						<input
+							class="w-full min-w-0 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]"
 							type="text"
 							placeholder={t('panels.sync.gistIdPlaceholder')}
 							bind:value={gistId}
 						/>
-					</label>
-					<label class="form-group">
-						<span>{t('panels.sync.noteLabel')}</span>
+					</AppField>
+					<AppField label={t('panels.sync.noteLabel')}>
 						<input
+							class="w-full min-w-0 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]"
 							type="text"
 							placeholder={t('panels.sync.notePlaceholder')}
 							bind:value={gistNote}
 						/>
-					</label>
-					<label class="toggle">
-						<input type="checkbox" bind:checked={gistPublic} />
-						<span>{t('panels.sync.publicLabel')}</span>
-					</label>
-					<button class="primary" type="submit" disabled={gistBusy || !hasGithubConfig}>
+					</AppField>
+					<AppField label={t('panels.sync.publicLabel')}>
+						<label class="flex items-center gap-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">
+							<input type="checkbox" bind:checked={gistPublic} />
+							<span>{t('panels.sync.publicLabel')}</span>
+						</label>
+					</AppField>
+					<AppButton type="submit" variant="primary" size="sm" disabled={gistBusy || !hasGithubConfig}>
 						{gistBusy ? t('panels.sync.statuses.syncing') : t('panels.sync.uploadButton')}
-					</button>
+					</AppButton>
+					<AppButton
+						type="button"
+						variant="danger"
+						size="sm"
+						disabled={gistBusy || !hasGithubConfig || !$githubToken}
+						on:click={() => (confirmOpen = true)}
+					>
+						{t('panels.sync.importReplaceButton')}
+					</AppButton>
 				</form>
 				{#if gistStatus}
-					<p class="status">{gistStatus}</p>
+					<p class="mt-2 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{gistStatus}</p>
 				{:else if !hasGithubConfig}
-					<p class="status">{t('panels.sync.githubMissing')}</p>
+					<p class="mt-2 text-[var(--app-text-xs)] text-[var(--app-color-danger)]">{t('panels.sync.githubMissing')}</p>
 				{/if}
-			</div>
+			</AppControlPanel>
 		</div>
-</ListSurface>
+
+		<AppDialog
+			open={confirmOpen}
+			title={t('panels.sync.confirm.importTitle')}
+			on:close={() => {
+				if (confirmBusy) return;
+				confirmOpen = false;
+				confirmError = '';
+			}}
+		>
+			<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg)]">
+				{format('panels.sync.confirm.importBody', { gistId: gistId.trim() || '-' })}
+			</p>
+			{#if confirmError}
+				<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-danger)]">{confirmError}</p>
+			{/if}
+			<div slot="actions" class="flex flex-wrap items-center justify-end gap-2">
+				<AppButton variant="secondary" size="sm" on:click={() => (confirmOpen = false)} disabled={confirmBusy}>
+					{t('panels.sync.confirm.cancel')}
+				</AppButton>
+				<AppButton variant="danger" size="sm" on:click={handleGistImportConfirm} loading={confirmBusy}>
+					{t('panels.sync.confirm.importConfirm')}
+				</AppButton>
+			</div>
+		</AppDialog>
+	</ListSurface>
 </DockPanelShell>

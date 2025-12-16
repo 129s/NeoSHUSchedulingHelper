@@ -38,19 +38,39 @@
 	{/if}
 
 	{#if hasChips || hasSettings}
-		<div class="flex flex-wrap items-start gap-3">
-			<div class="flex flex-1 flex-wrap gap-2 min-w-[220px]">
+		<div class="filters flex flex-wrap items-start gap-3">
+			<div class="chip-zone flex flex-1 flex-wrap gap-2 min-w-[220px]">
 				<slot name="chips" />
 			</div>
-			<div class="flex min-w-[96px] flex-col items-end gap-2">
+			<div class="settings-zone flex min-w-[96px] flex-col items-end gap-2">
 				<slot name="settings" />
 			</div>
 		</div>
 	{/if}
 
 	{#if hasAdvanced}
-		<div class="rounded-[var(--app-radius-lg)] border border-dashed border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-muted)] p-4 max-h-[360px] overflow-auto">
-			<slot name="advanced" />
-		</div>
+		<slot name="advanced" />
 	{/if}
 </section>
+
+<style>
+	.filters {
+		min-width: 0;
+	}
+
+	@container panel-shell (max-width: 640px) {
+		.filters {
+			flex-direction: column;
+		}
+
+		.filters .chip-zone,
+		.filters .settings-zone {
+			width: 100%;
+			min-width: 0;
+		}
+
+		.filters .settings-zone {
+			align-items: stretch;
+		}
+	}
+</style>

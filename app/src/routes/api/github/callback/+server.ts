@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { env as publicEnv } from '$env/dynamic/public';
 import { env as privateEnv } from '$env/dynamic/private';
-import { t } from '$lib/i18n';
+import { t } from '../../../../lib/i18n';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const code = url.searchParams.get('code');

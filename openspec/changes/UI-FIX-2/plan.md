@@ -8,13 +8,13 @@
 ## Work Breakdown
 1. **Panel scaffolds → ListSurface**
    - Update the seven solver/list panels to wrap their contents with `<ListSurface>`, wiring slots for header/search/filters/footer, and remove bespoke container markup.
-   - Confirm pagination + density behavior by referencing `list-surface.scss` breakpoints.
+   - Confirm pagination + density behavior by referencing the responsive rules baked into `ListSurface.svelte` (UnoCSS breakpoints @ 520px/360px/256px).
 2. **Tokenize spacing + shared components**
-   - Replace hard-coded padding/gap/margin widths with `var(--token-space-*)` etc. inside panel SCSS, CourseFiltersToolbar, PaginationFooter, ListSurface, DockWorkspace, CourseCard, ConstraintList, DiagnosticsList, SelectionModePrompt, DebugWorkbench, etc.
-   - Ensure each stylesheet imports `@use '$lib/styles/tokens' as *;`.
-3. **Dual-track token system**
-   - Create `$lib/styles/tokens/{_abstract,_md3,_fluent2,_legacy-shims,index.scss}` plus documentation (README.md, DESIGN-SYSTEM-SPEC.md).
-   - Wire SettingsPanel to theme selection and document how to toggle via `<html data-theme>`.
+   - Replace hard-coded padding/gap/margin widths with UnoCSS utilities + `var(--app-*)` semantic tokens directly inside the Svelte components (CourseFiltersToolbar, PaginationFooter, ListSurface, DockWorkspace, CourseCard, ConstraintList, DiagnosticsList, SelectionModePrompt, DebugWorkbench, etc.).
+   - Delete unused SCSS per component once the UnoCSS markup renders the same layout.
+3. **Virtual Theme Layer**
+   - Add `app/tokens/_base.css`, `theme.{material,fluent}.css`, and `animations.css`, importing them from `app/src/routes/+layout.svelte`.
+   - Wire SettingsPanel to the `uiTheme` store so toggling just mutates `<body data-theme>`; document the workflow in tokens README/spec.
 
 ## Risks / Mitigations
 - **Cross-theme drift:** Mitigated by keeping all components on semantic tokens; Verified by toggling data-theme manually.

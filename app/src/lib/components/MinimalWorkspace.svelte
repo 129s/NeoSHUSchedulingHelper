@@ -7,6 +7,7 @@
   } from "$lib/components/workspacePanels";
   import DockPanelShell from "$lib/components/DockPanelShell.svelte";
   import { ResponsiveSwitch } from '$lib/layout';
+  import AppButton from '$lib/primitives/AppButton.svelte';
 
   export let panelTitles: Record<WorkspacePanelType, string>;
 
@@ -18,6 +19,7 @@
     "solver": "panels.solver.description",
     "action-log": "panels.actionLog.description",
     "sync": "panels.sync.description",
+    "jwxt": "panels.jwxt.description",
     "settings": "settings.subtitle"
   };
 
@@ -29,7 +31,7 @@
   $: ActiveComponent = workspacePanels[activePanel];
 </script>
 
-<DockPanelShell class="h-full min-h-0 flex flex-col gap-4">
+<DockPanelShell class="h-full min-h-0 flex flex-col gap-4" scrollable={true}>
   <ResponsiveSwitch minWidth={520}>
     <div
       slot="large"
@@ -39,19 +41,16 @@
       style="scrollbar-gutter:stable both-edges;"
     >
       {#each orderedWorkspacePanels as panelId}
-        <button
-          type="button"
+        <AppButton
+          variant={panelId === activePanel ? 'primary' : 'secondary'}
+          size="sm"
+          class="whitespace-nowrap"
           role="tab"
           aria-selected={panelId === activePanel}
-          class={`inline-flex items-center gap-1 rounded-[var(--app-radius-md)] border px-3 py-2 text-[var(--app-text-sm)] transition-colors whitespace-nowrap ${
-            panelId === activePanel
-              ? 'border-transparent bg-[var(--app-color-primary)] text-[var(--app-color-on-primary)]'
-              : 'border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] text-[var(--app-color-fg)] hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]'
-          }`}
           on:click={() => (activePanel = panelId)}
         >
           <span>{panelTitles[panelId]}</span>
-        </button>
+        </AppButton>
       {/each}
     </div>
 
@@ -69,7 +68,7 @@
   </ResponsiveSwitch>
 
   <div
-    class="minimal-panel flex flex-1 flex-col gap-3 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-4 text-[var(--app-text-md)] text-[var(--app-color-fg)] shadow-[var(--app-shadow-soft)] min-h-0 min-w-0 overflow-auto"
+    class="minimal-panel minimal-workspace__panel flex flex-1 flex-col gap-3 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-4 text-[var(--app-text-md)] text-[var(--app-color-fg)] shadow-[var(--app-shadow-soft)] min-h-0 min-w-0 overflow-hidden"
     role="tabpanel"
   >
     {#if activeDescriptionKey}
@@ -77,9 +76,11 @@
     {/if}
 
     {#if ActiveComponent}
-      {#key activePanel}
-        <svelte:component this={ActiveComponent} />
-      {/key}
+      <div class="flex-1 min-h-0 min-w-0 flex flex-col">
+        {#key activePanel}
+          <svelte:component this={ActiveComponent} />
+        {/key}
+      </div>
     {/if}
   </div>
 </DockPanelShell>

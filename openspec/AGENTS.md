@@ -22,6 +22,7 @@ Generated from the UI reboot mandate. Keep this file in sync with repo-root `AGE
 - Plans live beside the change (`openspec/changes/<id>/plan.md`) using `.specify/templates/plan-template.md` (copy manually or via script).
 - Update tasks tables as work progresses; note testing + i18n status.
 - UI/I18n touchpoints require running `python3 scripts/check_i18n.py all` and recording the result.
+- If touching selection/desired/solver/action-log/sync logic, maintain an explicit state machine + invariants and keep OpenSpec docs updated (see repo-root `AGENTS.md` “Contract SM”; TermState runtime contract lives in `docs/STATE.md`).
 
 ## Workflow checklist
 1. Read `AGENTS.md` (repo root) + this file.

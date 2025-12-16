@@ -1,15 +1,14 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
-	let {
-		class: className = '',
-		padded = true,
-		scrollable = false,
-		elevated = true
-	} = $props();
+	export let className = '';
+	export { className as class };
+	export let padded = true;
+	export let scrollable = false;
+	export let elevated = true;
 
-	const baseClass =
-		'flex flex-col min-h-0 rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)]';
+const baseClass =
+	'dock-panel-shell flex flex-1 min-h-0 flex-col rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)]';
 </script>
 
 <div

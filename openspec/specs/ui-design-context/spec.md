@@ -40,7 +40,9 @@ This specification documents UI design decisions that may appear unusual or "wro
   - Shows numeric indicators (①②③) when blocks are too small for full text
 - **Judgment Criteria**:
   - ✅ Normal: Block has `clip-path` style with corresponding numeric indicator
+  - ✅ Normal: Hover/outline/click hit-testing is constrained to the clipped visible region (especially when multiple complementary blocks share one cell)
   - ❌ Issue: Block is clipped without `clip-path` (CSS bug)
+  - ❌ Issue: Hover triggers outside the visible clipped region or “steals” hover from a complementary block in the same cell
 - **Related**: `spec://cluster/calendar-clippath-rendering`
 
 #### 2.1.2 Compact Mode

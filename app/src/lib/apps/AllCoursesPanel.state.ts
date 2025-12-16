@@ -3,7 +3,7 @@ import type { CourseCatalogEntry } from '../data/catalog/courseCatalog';
 import { courseCatalog } from '../data/catalog/courseCatalog';
 import { activateHover, clearHover, hoveredCourse } from '../stores/courseHover';
 import { collapseCoursesByName } from '../stores/courseDisplaySettings';
-import { addToWishlist, reselectCourse, selectedCourseIds, wishlistCourseIds } from '../stores/courseSelection';
+import { addToWishlist, removeFromWishlist, reselectCourse, selectedCourseIds, wishlistCourseIds } from '../stores/courseSelection';
 import { groupCoursesByName, sortCourses } from '../utils/courseHelpers';
 import type { Readable } from 'svelte/store';
 import { createCourseFilterStore } from '../stores/courseFilters';
@@ -15,6 +15,8 @@ import {
 } from '../stores/intentSelection';
 import { applyCourseFilters } from '../utils/courseFilterEngine';
 import type { CourseFilterResult } from '../utils/courseFilterEngine';
+import { termState } from '../stores/termStateStore';
+import { deriveAvailability } from '../data/termState/derive';
 
 export const expandedGroups = writable<Set<string>>(new Set());
 
@@ -93,6 +95,7 @@ export function toggleGroup(key: string) {
 
 export function addCourse(courseId: string, wishlistHas: boolean, selectedHas: boolean) {
 	if (wishlistHas || selectedHas) return;
+	if (!canAddToWishlist(courseId)) return;
 	addToWishlist(courseId);
 }
 
@@ -101,17 +104,13 @@ export function reselectCourseFromList(courseId: string) {
 }
 
 export function addGroupToWishlist(courses: CourseCatalogEntry[], wishlist: Set<string>) {
-	const ids = courses.map(course => course.id).filter(id => !wishlist.has(id));
+	const ids = courses.map(course => course.id).filter(id => !wishlist.has(id) && canAddToWishlist(id));
 	ids.forEach(id => addToWishlist(id));
 }
 
 export function removeGroupFromWishlist(courses: CourseCatalogEntry[], wishlist: Set<string>) {
 	const ids = courses.map(course => course.id).filter(id => wishlist.has(id));
-	wishlistCourseIds.update(set => {
-		const next = new Set(set);
-		ids.forEach(id => next.delete(id));
-		return next;
-	});
+	ids.forEach((id) => removeFromWishlist(id));
 }
 
 export type WishlistActionState = 'selected' | 'wishlist' | 'add';
@@ -132,6 +131,19 @@ export function clearIntentSelection() {
 
 export function setIntentSelection(id: string, mark: 'include' | 'exclude' | null) {
 	setIntentSelectionStore(id, mark);
+}
+
+export function getAvailability(courseId: string) {
+	const state = get(termState);
+	const meta = get(filterMeta).get(courseId);
+	if (!state) {
+		return { availability: 'OK_NO_RESCHEDULE', conflict: meta?.conflict ?? 'none', blockerGroups: [], allowed: true } as const;
+	}
+	return deriveAvailability(state, courseId, meta);
+}
+
+export function canAddToWishlist(courseId: string) {
+	return getAvailability(courseId).allowed;
 }
 
 function allowHover(courseId: string) {

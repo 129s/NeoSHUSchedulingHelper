@@ -38,6 +38,18 @@ export async function appendActionLog(
 	await saveActionLog(log);
 }
 
+export async function updateActionLogEntry(
+	entryId: string,
+	updater: (entry: ActionLogEntry) => ActionLogEntry
+) {
+	const log = await ensureLoaded();
+	const updated = log.update(entryId, updater);
+	if (!updated) return null;
+	entriesWritable.set(log.getEntries());
+	await saveActionLog(log);
+	return updated;
+}
+
 export function getActionLogSnapshot() {
 	return actionLog ? actionLog.getEntries() : [];
 }

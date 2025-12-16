@@ -1,7 +1,9 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
-	let { label = null as string | null, class: className = '' } = $props();
+	export let label: string | null = null;
+	export let className = '';
+	export { className as class };
 </script>
 
 <div class={`flex flex-col gap-1.5 ${className}`.trim()}>

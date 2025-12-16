@@ -5,6 +5,7 @@ import AllCoursesPanel from "../apps/AllCoursesPanel.svelte";
 import SolverPanel from "../apps/SolverPanel.svelte";
 import ActionLogPanel from "../apps/ActionLogPanel.svelte";
 import SyncPanel from "../apps/SyncPanel.svelte";
+import JwxtPanel from "../apps/JwxtPanel.svelte";
 import SettingsPanel from "../apps/SettingsPanel.svelte";
 
 export const workspacePanels = {
@@ -15,6 +16,7 @@ export const workspacePanels = {
   "solver": SolverPanel,
   "action-log": ActionLogPanel,
   "sync": SyncPanel,
+  "jwxt": JwxtPanel,
   "settings": SettingsPanel
 } as const;
 
@@ -28,5 +30,6 @@ export const orderedWorkspacePanels: WorkspacePanelType[] = [
   "solver",
   "action-log",
   "sync",
+  "jwxt",
   "settings"
 ];
