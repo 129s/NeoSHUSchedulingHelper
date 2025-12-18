@@ -1,10 +1,21 @@
 # Python virtual environment
 .venv/
+__pycache__/
+*.pyc
 
 # Crawler local secrets and artifacts
 crawler/.secrets.json
 crawler/.secrets.yaml
 crawler/.secrets.yml
+crawler/.jwxt_cookie.enc.json
+crawler/.jwxt_cookie_rsa.pem
 
 # Agent temporary files
 agentTemps/
+openspec/
+
+AGENTS.md
+PLAN.md
+QWERTY.md
+
+docs/*.md
