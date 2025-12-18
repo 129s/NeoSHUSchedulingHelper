@@ -40,7 +40,7 @@
 
 	$: stateClass =
 		selectable && selected
-			? 'bg-[var(--app-color-primary)] text-[var(--app-color-on-primary)] border-transparent shadow-[0_0_0_1px_color-mix(in_srgb,var(--app-color-primary)_70%,transparent)]'
+			? '!bg-[var(--app-color-primary)] !text-[var(--app-color-on-primary)] !border-transparent shadow-[0_0_0_1px_color-mix(in_srgb,var(--app-color-primary)_70%,transparent)]'
 			: '';
 </script>
 

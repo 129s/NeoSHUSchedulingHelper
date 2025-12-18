@@ -1,15 +1,48 @@
 import { get, writable } from 'svelte/store';
 import { currentTheme, availableThemes, setTheme } from '../stores/uiTheme';
-import { collapseCoursesByName } from '../stores/courseDisplaySettings';
-import { crossCampusAllowed, setCrossCampusAllowed, selectionMode, setSelectionMode } from '../stores/coursePreferences';
+import { materialSeedColor, setMaterialSeedColor } from '../stores/materialThemeColor';
+import { fluentAccentColor, setFluentAccentColor } from '../stores/fluentThemeColor';
+import { collapseCoursesByName, hideFilterStatusControl } from '../stores/courseDisplaySettings';
+import {
+	crossCampusAllowed,
+	homeCampus,
+	setCrossCampusAllowed,
+	setHomeCampus,
+	selectionMode,
+	setSelectionMode
+} from '../stores/coursePreferences';
 import type { SelectionMode } from '../stores/coursePreferences';
-import { paginationMode, pageSize, pageNeighbors, showWeekends } from '../stores/paginationSettings';
+import {
+	paginationMode,
+	pageSize,
+	pageNeighbors,
+	showWeekends,
+	setPaginationMode as setPaginationModeValue,
+	setPageSize as setPageSizeValue,
+	setPageNeighbors as setPageNeighborsValue,
+	toggleWeekends as toggleWeekendsValue
+} from '../stores/paginationSettings';
+import { getMetaConfig } from '../../config/meta';
 
 const initialTheme = get(currentTheme);
 type ThemeId = typeof initialTheme;
 
+export const metaConfig = getMetaConfig();
 export const selectedTheme = writable<ThemeId>(initialTheme);
-export { availableThemes, collapseCoursesByName, crossCampusAllowed, selectionMode, paginationMode, pageSize, pageNeighbors, showWeekends };
+export {
+	availableThemes,
+	collapseCoursesByName,
+	hideFilterStatusControl,
+	crossCampusAllowed,
+	homeCampus,
+	selectionMode,
+	paginationMode,
+	pageSize,
+	pageNeighbors,
+	showWeekends
+};
+export { materialSeedColor };
+export { fluentAccentColor };
 
 export function handleThemeChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
@@ -18,8 +51,30 @@ export function handleThemeChange(event: Event) {
 	setTheme(value);
 }
 
+export function handleMaterialSeedColorChange(event: Event) {
+	const target = event.target as HTMLInputElement;
+	setMaterialSeedColor(target.value);
+}
+
+export function setMaterialSeedColorValue(value: string) {
+	setMaterialSeedColor(value);
+}
+
+export function handleFluentAccentColorChange(event: Event) {
+	const target = event.target as HTMLInputElement;
+	setFluentAccentColor(target.value);
+}
+
+export function setFluentAccentColorValue(value: string) {
+	setFluentAccentColor(value);
+}
+
 export function toggleCollapseSetting() {
 	collapseCoursesByName.update(value => !value);
+}
+
+export function toggleHideFilterStatusControl() {
+	hideFilterStatusControl.update((value) => !value);
 }
 
 export function toggleCrossCampus() {
@@ -34,20 +89,22 @@ export function setSelectionModeSetting(mode: SelectionMode) {
 	setSelectionMode(mode);
 }
 
+export function setHomeCampusSetting(value: string) {
+	setHomeCampus(value);
+}
+
 export function setPaginationMode(mode: 'paged' | 'continuous') {
-	paginationMode.set(mode);
+	setPaginationModeValue(mode);
 }
 
 export function setPageSize(value: number) {
-	if (!Number.isFinite(value) || value <= 0) return;
-	pageSize.set(Math.floor(value));
+	setPageSizeValue(value);
 }
 
 export function setPageNeighbors(value: number) {
-	if (!Number.isFinite(value) || value < 1) return;
-	pageNeighbors.set(Math.floor(value));
+	setPageNeighborsValue(value);
 }
 
 export function toggleWeekends() {
-	showWeekends.update((v) => !v);
+	toggleWeekendsValue();
 }

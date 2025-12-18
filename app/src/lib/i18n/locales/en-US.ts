@@ -4,21 +4,33 @@ export const enUS = {
     subtitle: 'Switch dock theme and global preferences.',
     displaySection: 'Display',
     behaviorSection: 'Behavior',
+    pwaSection: 'App (PWA)',
     theme: 'Theme',
+    themeColorLabel: 'Theme color (MD3)',
+    themeColorDesc: 'Applies to Material Design 3 only.',
+    fluentAccentColorLabel: 'Accent color (Fluent)',
+    fluentAccentColorDesc: 'Applies to Fluent 2 only.',
     collapseLabel: 'Course collapse mode',
-    collapseDesc: 'Decide whether course lists collapse by course name.',
-    collapseOn: 'Collapse by course',
+    collapseDesc: 'Decide whether course lists collapse by course group.',
+    collapseOn: 'Collapse by group',
     collapseOff: 'Show each section',
+    hideFilterStatusLabel: 'Filters: hide status control',
+    hideFilterStatusDesc: 'When enabled, the course filter toolbar hides the “Status” control (the current status mode still applies).',
+    hideFilterStatusOn: 'Hide status control',
+    hideFilterStatusOff: 'Show status control',
     crossCampusLabel: 'Allow cross-campus courses',
     crossCampusDesc: 'Enable to show campus and cross-campus details on course cards.',
     crossCampusOn: 'Show campus',
     crossCampusOff: 'Hide campus',
+    homeCampusLabel: 'Home campus',
+    homeCampusDesc: 'Your primary campus, used for default filtering and hints.',
+    homeCampusUnset: 'Not set',
     modeLabel: 'Selection mode (term)',
     modeDesc: 'Choose Allow Overflow Mode or Overflow Speed Race Mode; can be changed anytime.',
     allowOverflowMode: 'Allow Overflow Mode (overbook)',
     overflowSpeedRaceMode: 'Overflow Speed Race Mode',
     paginationLabel: 'Pagination mode',
-    paginationDesc: 'Choose paged or continuous loading for course lists.',
+    paginationDesc: 'Choose paged or continuous loading for course lists (All Courses, Wishlist, Selected, JWXT).',
     paged: 'Paged',
     continuous: 'Continuous',
     pageSize: 'Page size',
@@ -30,17 +42,99 @@ export const enUS = {
     languageLabel: 'Interface language',
     languageDesc: 'Switch UI language instantly.',
     languageOptions: {
+      auto: 'Auto (system/plugin)',
       zh: '简体中文',
       en: 'English'
-    }
+    },
+    pwaInstallStateLabel: 'Installable web app',
+    pwaInstallStateDesc: 'Install this site as an app (PWA) for a standalone window.',
+    pwaInstalledYes: 'Installed (standalone)',
+    pwaInstalledNo: 'Not installed (browser tab)',
+    pwaInstallHint:
+      'If the Install button is disabled, use your browser menu: “Install app” / “Add to Home Screen”.',
+    pwaOfflineStateLabel: 'Offline capability',
+    pwaOfflineStateDesc: 'Shows service worker status (basic asset caching when supported).',
+    pwaSwUnsupported: 'Unsupported (service worker unavailable)',
+    pwaSwDevDisabled: 'Disabled in dev mode (use build + preview)',
+    pwaSwRegistered: 'Enabled (registered)',
+    pwaSwControlled: 'Enabled (controlling this page)',
+    pwaSwNotRegistered: 'Not enabled (registration failed or blocked)',
+    pwaInstallActionLabel: 'Install action',
+    pwaInstallActionDesc: 'Available in supported browsers when install criteria are met.',
+    pwaInstallButton: 'Install app',
+    pwaInstallDismissed: 'Install dismissed',
+    pwaInstallFailed: 'Install failed',
+    aboutSection: 'About',
+    aboutDesc: 'Project links and feedback channels.',
+    aboutProductLabel: 'Product',
+    aboutProductDesc: 'Homepage and project information.',
+    aboutOpenHomepage: 'Open homepage',
+    aboutProjectGroup: 'Project',
+    aboutFeedbackGroup: 'Feedback',
+    aboutGithubRepo: 'GitHub repository',
+    aboutGithubIssues: 'GitHub issues',
+    aboutTencentSupport: 'Tencent support'
+  },
+  meta: {
+    productName: 'SHU Scheduling Helper',
+    productByline: 'by SHUOSC',
+    productIconAlt: 'SHUOSC logo'
   },
   common: {
     dockTitle: 'Course Tools',
     settings: 'Settings',
     optional: 'Optional',
-    selectPlaceholder: 'Select an option'
+    selectPlaceholder: 'Select an option',
+    crawlStages: {
+      context: 'Loading selection context…',
+      list: 'Fetching course list…',
+      details: 'Fetching course details…',
+      finalize: 'Finalizing snapshot…',
+      download: 'Downloading cloud snapshot…',
+      error: 'Error'
+    }
   },
   dialogs: {
+    autoSolve: {
+      title: 'Auto plan',
+      description:
+        'Plans at group granularity: keeps selected groups and tries to satisfy wishlisted group targets (no section-level actions). Applies the plan to Selected.',
+      enabledLabel: 'Auto mode',
+      enabledOn: 'Enabled',
+      enabledOff: 'Disabled',
+      selectionModeLabel: 'Selection mode',
+      selectionModeUnknown: 'Not set',
+      disabledSpeedRace: 'Auto mode is disabled in speed-race mode.',
+      timeSoftTitle: 'Time soft constraints (weight, 0 disables)',
+      avoidEarly: 'Avoid early (period 1-2)',
+      avoidLate: 'Avoid late (period 11+)',
+      timeSoftHint: 'Only affects auto plan; manual solver is unchanged.',
+      groupCountLabel: 'Wishlisted groups',
+      groupCountValue: '{count}',
+      runNow: 'Run auto plan',
+      runningButton: 'Running…',
+      running: 'Running auto plan…',
+      done: 'Auto plan applied.',
+      failed: 'Auto plan failed.',
+      noGroups: 'No wishlisted targets and no selected groups to plan.',
+      openSolver: 'Open solver',
+      close: 'Close'
+    },
+    autoSolveExit: {
+      title: 'Exit auto mode',
+      summary:
+        'A manual snapshot was saved before entering auto mode (Selected {selected}, wishlisted sections {wishlistSections}, wishlisted groups {wishlistGroups}). Restore it?',
+      hint: '“Restore & exit” overwrites current state. “Exit only” keeps the current state.',
+      cancel: 'Cancel',
+      keep: 'Exit only',
+      restore: 'Restore & exit'
+    },
+    autoSolveExitFailed: {
+      title: 'Cannot exit auto mode',
+      summary: 'Failed to export to a section-level solution (unsat or solver error). Auto mode stays enabled.',
+      errorLabel: 'Reason:',
+      ack: 'OK'
+    },
     datasetResolve: {
       title: 'Course grouping changed',
       summary:
@@ -58,13 +152,21 @@ export const enUS = {
       softLabel: 'Soft constraint {id}',
       reasons: {
         'lock.courseHashMissing': 'Missing courseHash.',
+        'lock.courseHashNotFound': 'courseHash not found in dataset.',
         'lock.sectionIdMissing': 'Missing sectionId.',
+        'lock.sectionNotFound': 'Section not found in dataset.',
         'lock.teacherIdMissing': 'Missing teacherId.',
+        'lock.teacherNotFound': 'Teacher not found in dataset.',
         'lock.timeWindowMissing': 'Missing time window.',
         'lock.timeWindowRange': 'Invalid time range (start >= end).',
         'lock.groupEmpty': 'Empty group candidate list.',
+        'lock.groupAllMissing': 'All group candidates are missing in dataset.',
         'soft.weightInvalid': 'Invalid weight (must be > 0).',
-        'soft.campusMissing': 'Missing campus parameter.'
+        'soft.campusMissing': 'Missing campus parameter.',
+        'soft.groupKeyMissing': 'Missing groupKey.',
+        'soft.groupKeyNotFound': 'Group not found in dataset.',
+        'soft.sectionIdMissing': 'Missing sectionId.',
+        'soft.sectionNotFound': 'Section not found in dataset.'
       },
       close: 'Close',
       autoDelete: 'Delete invalid constraints'
@@ -116,19 +218,23 @@ export const enUS = {
     emptyHint: 'Hover items in the lists or solver panel to view course details.',
     weekdaysShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   },
-	  panels: {
-	    common: {
-	      conflictHard: 'Hard conflict',
-	      conflictTime: 'Time conflict',
-	      conflictDivider: ' · ',
-	      conflictListSeparator: '; ',
-	      availability: {
-	        requiresReselect: 'May require reselecting existing courses.',
-	        policyBlocksReselect: 'Blocked by policy: only courses with no reschedule are allowed.',
-	        impossible: 'Unavailable due to conflicts with selected courses.',
-	        groupNoSelectable: 'No selectable sections in this group.'
-	      }
-	    },
+		  panels: {
+		    common: {
+		      conflictHard: 'Hard conflict',
+		      conflictTime: 'Time conflict',
+		      conflictDivider: ' · ',
+		      conflictListSeparator: '; ',
+		      autoSolve: {
+		        toggle: 'Auto mode',
+		        settings: 'Auto plan settings'
+		      },
+			      availability: {
+			        requiresReselect: 'May require reselecting existing courses.',
+			        policyBlocksReselect: 'Blocked by list policy (requires reschedule).',
+			        impossible: 'Unavailable due to conflicts with selected courses.',
+			        groupNoSelectable: 'No selectable sections in this group.'
+			      }
+			    },
 	    allCourses: {
 	      title: 'All Courses',
 	      description: 'Browse every candidate course; quickly add items to wishlist.',
@@ -141,18 +247,57 @@ export const enUS = {
         selected: 'Selected',
         wishlist: 'In wishlist',
         add: 'Add to wishlist'
+      },
+      bulk: {
+        label: '{count} selected',
+        actions: {
+          wishlistAdd: 'Add to wishlist',
+          wishlistRemove: 'Remove from wishlist'
+        },
+        selectAll: 'Select all',
+        selectPage: 'Select this page',
+        clearSelection: 'Clear selection',
+        execute: 'Apply',
+        working: 'Working…',
+        selectGroup: 'Select group {name}',
+        selectSection: 'Select section {name}',
+        done: 'Applied {applied} items (skipped {skipped}).',
+        nothing: 'Nothing to apply (skipped {skipped}).'
       }
     },
     candidates: {
       title: 'Wishlist',
       description: 'Pick courses to keep in the wishlist or remove them anytime.',
+      autoTitle: 'Course selection',
+      autoDescription: 'Filter course groups and mark them as auto-plan targets.',
       empty: 'Wishlist is empty',
       clear: 'Clear',
       expand: 'More',
       collapse: 'Collapse',
       select: 'Select',
+      unselect: 'Unselect',
+      autoTargetAdd: 'Add target',
+      autoTargetRemove: 'Remove target',
+      autoTargetBlocked: 'No feasible plan under current policy.',
       removeGroup: 'Remove from wishlist',
       groupTotal: '{count} sections',
+      bulk: {
+        label: '{count} selected',
+        actions: {
+          select: 'Select',
+          remove: 'Remove',
+          importSolver: 'Import to solver'
+        },
+        selectAll: 'Select all',
+        selectPage: 'Select this page',
+        clearSelection: 'Clear selection',
+        execute: 'Apply',
+        working: 'Working…',
+        selectGroup: 'Select group {name}',
+        selectSection: 'Select section {name}',
+        autoTargetResult: 'Added {added} targets, skipped {skipped} infeasible groups.',
+        groupSelectUnsupported: '{count} group items require choosing a specific section. Use the per-group action instead.'
+      },
       toggleMore: {
         expand: 'More',
         collapse: 'Collapse'
@@ -163,7 +308,21 @@ export const enUS = {
       description: 'Review and manage courses already selected.',
       empty: 'No selected courses',
       reselect: 'Reselect',
-      drop: 'Drop'
+      drop: 'Drop',
+      bulk: {
+        label: '{count} selected',
+        actions: {
+          demote: 'Move to wishlist',
+          importSolver: 'Import to solver'
+        },
+        selectAll: 'Select all',
+        selectPage: 'Select this page',
+        clearSelection: 'Clear selection',
+        execute: 'Apply',
+        working: 'Working…',
+        selectGroup: 'Select group {name}',
+        selectSection: 'Select section {name}'
+      }
     },
     solver: {
       title: 'Solver',
@@ -177,6 +336,75 @@ export const enUS = {
       cancel: 'Cancel',
       apply: 'Apply',
       undoApply: 'Undo apply',
+      stagingTitle: 'Staging',
+      stagingHint: 'Imported items will appear here.',
+      stagingEmpty: 'No staging items yet.',
+      stagingRemove: 'Remove',
+      stagingClear: 'Clear staging',
+      staging: {
+        lockSection: 'Lock section',
+        lockGroup: 'Lock group'
+      },
+      quickAddTitle: 'Quick add',
+      quickAdd: {
+        time: 'Add time constraint',
+        teacher: 'Add teacher constraint',
+        soft: 'Add soft constraint'
+      },
+      timeDialog: {
+        applyAllDays: 'Apply to all weekdays'
+      },
+      bulk: {
+        selected: '{count} selected',
+        apply: 'Apply',
+        remove: 'Remove',
+        clear: 'Clear'
+      },
+      cardOps: {
+        button: 'Actions',
+        title: 'Actions',
+        applyToSection: 'Apply to section',
+        applyToGroup: 'Apply to group',
+        convertToGroup: 'Convert to group',
+        convertToSection: 'Convert to section',
+        expandSections: 'Expand sections',
+        removeFromStaging: 'Remove from staging',
+        weightLabel: 'Weight'
+      },
+      groupExpand: {
+        title: 'Group sections',
+        hint: 'Pick a section and apply desire/avoid.'
+      },
+      groupAllowed: {
+        title: 'Allowed sections',
+        modeLabel: 'Mode',
+        modeRequireAvoid: 'Hard: require group + soft avoid sections',
+        modeLimitAllowed: 'Hard: limit allowed sections',
+        sectionDirectionLabel: 'Section direction',
+        sectionStrengthLabel: 'Section strength',
+        hintLimitAllowed: 'Pick which sections are allowed for this group lock (solver will choose among them).',
+        hintRequireAvoid: 'Pick which sections to avoid (solver will try to avoid them, but may still pick if needed).',
+        count: '{count} allowed',
+        avoidCount: '{count} avoided',
+        selectedCount: '{count} selected',
+        selectAll: 'Select all',
+        clearAll: 'Clear',
+        avoidAll: 'Avoid all',
+        clearAvoid: 'Clear avoids',
+        avoidWeightLabel: 'Avoid weight',
+        cancel: 'Cancel',
+        confirm: 'Apply',
+        emptyError: 'Select at least one allowed section.',
+        missingGroup: 'Cannot resolve the course group for this item.',
+        edit: 'Edit allowed sections',
+      },
+      groupPick: {
+        title: 'Pick a section',
+        hint: 'Select one section from this group to lock.',
+        cancel: 'Cancel',
+        confirm: 'Lock section',
+        missingSection: 'Selected section is missing in dataset.'
+      },
       timePreset: 'Time presets{label}',
       timePresetOptions: ['Period 1', 'Periods 11-12', 'Morning', 'Afternoon', 'Evening'],
       templateNamePlaceholder: 'Template name',
@@ -205,8 +433,10 @@ export const enUS = {
       lockType: 'Type',
       lockPriority: 'Priority',
       lockCourseLabel: 'Course',
-      lockTeacherLabel: 'Teacher ID',
-      lockTeacherPlaceholder: 'Teacher identifier',
+      lockTeacherLabel: 'Teacher',
+      lockTeacherPlaceholder: 'Teacher name or ID',
+      teacherResolveError: 'Cannot resolve teacher. Please pick from suggestions.',
+      teacherResolved: 'Resolved: {label}',
       lockWeekday: 'Weekday',
       lockStartPeriod: 'Start period',
       lockEndPeriod: 'End period',
@@ -216,8 +446,10 @@ export const enUS = {
       lockGroupLabel: 'Group ({count} courses)',
       lockTypeOptions: {
         course: 'Course',
+        section: 'Section',
         teacher: 'Teacher',
-        time: 'Time window'
+        time: 'Time window',
+        group: 'Group'
       },
       addLock: 'Add hard constraint',
       softLocks: 'Soft constraints',
@@ -226,6 +458,10 @@ export const enUS = {
         'avoid-early': 'Avoid early classes',
         'avoid-late': 'Avoid late classes',
         'avoid-campus': 'Avoid campus',
+        'avoid-group': 'Avoid group',
+        'avoid-section': 'Avoid section',
+        'prefer-group': 'Prefer group',
+        'prefer-section': 'Prefer section',
         'limit-consecutive': 'Limit back-to-back classes',
         'max-per-day': 'Limit classes per day',
         custom: 'Custom'
@@ -234,6 +470,10 @@ export const enUS = {
         'avoid-early': 'Avoid early classes',
         'avoid-late': 'Avoid late classes',
         'avoid-campus': 'Avoid campus {campus}',
+        'avoid-group': 'Avoid group {label}',
+        'avoid-section': 'Avoid section {label}',
+        'prefer-group': 'Prefer group {label}',
+        'prefer-section': 'Prefer section {label}',
         'limit-consecutive': 'Limit consecutive classes',
         'max-per-day': 'Limit classes per day',
         custom: 'Custom'
@@ -278,6 +518,10 @@ export const enUS = {
       solverResultMetricsElapsed: 'Elapsed',
       solverPlanTitle: 'Suggested actions ({count})',
       solverPlanEmpty: 'No actions needed; current selection already satisfies constraints.',
+      unsatHint: 'No solution under hard constraints.',
+      unsatSoftHint: 'Try switching some hard constraints to soft, or revert conflicting states to None.',
+      unsatDiagnosticsTitle: 'Diagnostics',
+      unsatCoreTitle: 'Unsat core',
       unsatTitle: 'No solution',
       unsatConflictLabel: 'Non-adjustable conflict',
       diagnosticAdjustable: 'Adjustable conflict',
@@ -289,6 +533,36 @@ export const enUS = {
       planRemove: 'Remove {label}',
       planAddOverride: 'Add manual override',
       planRemoveOverride: 'Remove manual override'
+      ,
+      solutionSummary: 'Solution sections: {count}',
+      solutionEmpty: 'No sections in this solution.',
+      weekdayFallback: 'Day {index}',
+      periodSingle: 'P{index}',
+      periodRange: 'P{start}-{end}',
+      groupConstraintsTitle: 'Group constraints',
+      groupConstraintsHint: 'Review the currently applied constraints per group.',
+      groupConstraintsEmpty: 'No group constraints yet.',
+      pendingTitle: 'Staged',
+      pendingHint: 'Use course list bulk action “Import to solver” to stage groups/sections, then set hard/soft states here and apply.',
+      pendingEmpty: 'No staged items.',
+      pendingApplyRequiresExplicit: 'Set at least one non-default hard/soft state before applying.',
+      pendingConflictHardSoft: 'Hard/soft cannot both be set for the same section. Keep one side as None.',
+      statusBox: {
+        level: {
+          hard: 'Hard',
+          soft: 'Soft'
+        },
+        state: {
+          require: 'Pick',
+          forbid: 'Forbid',
+          none: 'None'
+        },
+        tag: {
+          active: 'Applied',
+          pending: 'Staged'
+        },
+        conflict: 'Conflict'
+      }
     },
     actionLog: {
       title: 'Action Log',
@@ -348,13 +622,46 @@ export const enUS = {
       connectionTitle: 'Connection & Login',
       connectionDescription:
         'Log in to JWXT to sync selected courses, or push your local selection state to JWXT.',
+      crawlData: 'Crawl data',
+      crawlHint: 'After crawling, reload the page to apply the new dataset.',
+      rounds: {
+        title: 'Term & Round',
+        roundLabel: 'Enrollment round',
+        roundIndex: 'Round {count}',
+        refresh: 'Refresh rounds',
+        loading: 'Loading rounds...',
+        cloudCompareLoading: 'Comparing cloud rounds...',
+        cloudCompareOk: 'Cloud rounds aligned',
+        cloudCompareFailed: 'Cloud round compare failed: {error}',
+        cloudCompareMismatch: 'Cloud rounds mismatch: missing {missing}; mismatched {mismatched}'
+      },
       refresh: 'Refresh',
       ping: 'Test connection',
       login: 'Log in',
       logout: 'Log out',
-      loginHint: 'Your password is only sent to the local backend and is not persisted in the browser.',
+      loginHint: 'Your password is only sent to the local backend. You can optionally save an encrypted session cookie for auto login.',
+      loginMethodLabel: 'Login method',
+      loginMethodPassword: 'Password',
+      loginMethodCookie: 'Cookie',
       userIdLabel: 'Student ID',
       passwordLabel: 'Password',
+      cookieHeaderLabel: 'Cookie (header)',
+      importCookie: 'Import cookie',
+      cookieHint: 'Paste a Cookie header captured from JWXT (e.g. via browser devtools).',
+      persistHint: 'Auto login (optional): save a JWXT session cookie locally.',
+      persistNone: 'Do not save',
+      persistDevice: 'Save for auto login (device)',
+      persistVault: 'Encrypt with password (requires unlock)',
+      persistVaultHint: 'Password vault requires interaction (unlock) for login.',
+      persistSaveNow: 'Save current session',
+      vaultPasswordLabel: 'Vault password',
+      vaultPasswordConfirmLabel: 'Confirm vault password',
+      vaultUnlockPasswordLabel: 'Vault password',
+      vaultUnlockHint: 'A password-encrypted cookie vault exists. Unlock to log in.',
+      vaultUnlockAndLogin: 'Unlock & log in',
+      vaultClear: 'Clear vault',
+      deviceVaultHint: 'Auto-login cookie is saved on this device.',
+      deviceVaultClear: 'Clear auto-login',
       syncTitle: 'Sync',
       syncDescription: 'Pull selection state from JWXT, or push local state to JWXT.',
       syncFrom: 'Sync from JWXT',
@@ -371,15 +678,29 @@ export const enUS = {
       lastSyncAt: 'Last sync: {time}',
       lastPushAt: 'Last push: {time}',
       confirmHint: 'Any action that may modify JWXT always shows a confirmation dialog.',
-      enrollTitle: 'Search / Enroll / Drop (planned)',
+      enrollTitle: 'Enroll (direct)',
       enrollDescription:
-        'Search JWXT, map results to the local dataset, plan select/wishlist/drop, then push to JWXT.',
+        'Use the same filter toolbar as All Courses to filter local courses, then submit a direct enrollment request to JWXT (login required).',
+      bulk: {
+        label: '{count} selected',
+        selectVisible: 'Select this page',
+        selectEligible: 'Select all',
+        selectAll: 'Select all',
+        clearSelection: 'Clear selection',
+        enrollExecute: 'Batch enroll',
+        dropExecute: 'Batch drop',
+        working: 'Working…',
+        selectEnroll: 'Select to enroll: {name}',
+        selectDrop: 'Select to drop: {name}',
+        selectDropNoMapping: 'Select to drop: {kchId} ({jxbId})'
+      },
       searchLabel: 'Search',
       searchPlaceholder: 'Course code / name / instructor',
       search: 'Search',
-      enroll: 'Enroll',
+      enroll: 'Enroll now',
       drop: 'Drop',
       dropNow: 'Drop now',
+      copyToWishlist: 'Copy to wishlist',
       planSelect: 'Plan select',
       planDeselect: 'Unselect',
       planWishlistAdd: 'Add to wishlist',
@@ -406,6 +727,16 @@ export const enUS = {
         pushDiffDropTitle: 'To drop',
         pushDiffEmpty: 'No changes',
         pushDiffMore: '…and {count} more',
+        bulkEnrollTitle: 'Confirm batch enrollment',
+        bulkEnrollBody: 'This will submit {count} enrollment request(s) to JWXT. {skipped} will be skipped. Continue?',
+        bulkEnrollConfirm: 'Batch enroll',
+        bulkEnrollListTitle: 'To enroll',
+        bulkDropTitle: 'Confirm batch dropping',
+        bulkDropBody: 'This will submit {count} drop request(s) to JWXT. Continue?',
+        bulkDropConfirm: 'Batch drop',
+        bulkDropListTitle: 'To drop',
+        bulkSkipTitle: 'Skipped',
+        bulkSkipCount: 'Skipped {count} item(s) (time conflict/already selected/unavailable)',
         enrollTitle: 'Confirm enrollment',
         enrollBody:
           'This will submit an enrollment request to JWXT: {course}. It may change your enrollment results. Continue?',
@@ -420,16 +751,29 @@ export const enUS = {
         backendMissing: 'JWXT backend is not wired yet.',
         loggedIn: 'Logged in to JWXT.',
         loggedOut: 'Not logged in to JWXT.',
+        roundSelected: 'Enrollment round switched: {round}',
+        roundSnapshotActivated: 'Cached snapshot activated (refresh to apply): {round}',
         accountLabel: 'Account: {userId}',
         statusFailed: 'Failed to load status: {error}',
+        crawling: 'Crawling course data...',
+        crawlProgress: 'Crawled {done}/{total} courses',
+        crawlSuccess: 'Crawl succeeded. Reload the page to apply the new dataset.',
+        crawlFailed: 'Crawl failed: {error}',
         pinging: 'Testing connection...',
         pingOk: 'Connection test done (HTTP {status})',
         pingFailed: 'Connection test failed: {error}',
         missingCredentials: 'Enter your student ID and password first',
+        missingUserId: 'Enter your student ID first',
+        missingCookieCredentials: 'Enter your student ID and cookie first',
+        missingVaultPassword: 'Enter vault password first',
         loggingIn: 'Logging in...',
+        importingCookie: 'Importing cookie...',
         loginSuccess: 'Login succeeded',
         loginFailed: 'Login failed: {error}',
         logoutFailed: 'Logout failed: {error}',
+        autoLoginTrying: 'Trying auto login...',
+        autoLoginSuccess: 'Auto login succeeded',
+        autoLoginFailed: 'Auto login failed: {error}',
         requireLogin: 'Log in to JWXT first',
         syncing: 'Syncing...',
         syncSuccess: 'Sync succeeded: {selected} selected, {wishlist} wishlist',
@@ -444,7 +788,16 @@ export const enUS = {
         searchFailed: 'Search failed: {error}',
         searchSuccess: 'Search finished: {count} results',
         enrollSuccess: 'Enrollment request submitted',
-        dropSuccess: 'Drop request submitted'
+        bulkNothingToEnroll: 'Nothing eligible to batch enroll (skipped time conflicts/already selected).',
+        bulkEnrollSuccess: 'Submitted {count} enrollment request(s)',
+        copyToWishlistSuccess: 'Copied to wishlist',
+        dropSuccess: 'Drop request submitted',
+        bulkNothingToDrop: 'Nothing selected to batch drop.',
+        bulkDropSuccess: 'Submitted {count} drop request(s)',
+        vaultPasswordTooShort: 'Vault password must be at least 6 characters',
+        vaultPasswordMismatch: 'Vault passwords do not match',
+        persistSaved: 'Saved session for future login',
+        persistFailed: 'Failed to save session: {error}'
       }
     },
     sync: {
@@ -458,6 +811,7 @@ export const enUS = {
       storageSelectionMode: 'Selection mode: {mode}',
       storageCrossCampus: 'Cross-campus: {value}',
       storageCollapse: 'Course collapse: {value}',
+      storageFilterStatusControl: 'Hide filter status control: {value}',
       storageTimeTemplates: 'Time templates: {count}',
       exportTitle: 'Export selection state',
       exportDescription: 'Generate a Base64 snapshot (includes term/version) for copying or sharing.',
@@ -514,13 +868,18 @@ export const enUS = {
     view: 'View',
     search: 'Search',
     searchPlaceholder: 'Course name / code / instructor',
+    searchHelp:
+      'Supports: course name / course code / instructor / note. Split multiple terms with spaces or punctuation (AND). Optional prefixes: teacher: / code: / name: / note:.',
     status: 'Status',
-    conflict: 'Conflict',
-    sort: 'Sort',
-    regex: 'Regex',
-    caseSensitive: 'Case sensitive',
-    advanced: 'Advanced filters',
-    closeAdvanced: 'Close advanced',
+	    conflict: 'Conflict mode',
+	    sort: 'Sort',
+	    sortOrderAsc: 'Ascending',
+	    sortOrderDesc: 'Descending',
+		    showConflictBadges: 'Show conflict items',
+	    regex: 'Regex',
+	    caseSensitive: 'Case sensitive',
+	    advanced: 'Advanced filters',
+	    closeAdvanced: 'Close advanced',
     jump: 'Jump',
     totalPages: '{count} pages total',
     viewModes: {
@@ -535,14 +894,44 @@ export const enUS = {
       selectedPending: 'Only not selected',
       selectedChosen: 'Only selected'
     },
+    statusModes: {
+      all: {
+        none: 'No filter',
+        noStatus: 'No status',
+        wishlist: 'Wishlist',
+        selected: 'Selected',
+        orphanSelected: 'Orphan selected'
+      },
+      wishlist: {
+        none: 'No filter',
+        orphan: 'Orphan wishlist',
+        hasSelected: 'Wishlist: group selected'
+      },
+      selected: {
+        none: 'No filter',
+        orphan: 'Orphan selected',
+        hasWishlist: 'Selected: group has wishlist'
+      }
+    },
     conflictOptions: {
       any: 'No filter',
       noAnyConflict: 'No conflicts',
       noTimeConflict: 'No time conflicts',
-      noHardConstraintConflict: 'No hard constraint violations',
-      noUnavoidableConflict: 'No unavoidable conflicts'
+      currentImpossible: 'Currently not selectable',
+      hardTimeConflict: 'Hard constraint: time conflict',
+      hardImpossible: 'Hard constraint: not selectable',
+      softTimeConflict: 'Soft constraint: adjustable',
+      softImpossible: 'Soft constraint: not selectable'
+    },
+    conflictJudgeOptions: {
+      off: 'Disable conflict judging',
+      time: 'Time conflict',
+      current: 'Currently not selectable',
+      hard: 'Hard constraint: not selectable',
+      soft: 'Soft constraint: not selectable'
     },
     campus: 'Campus',
+    campusLockedHint: 'Campus filter is locked. Enable “Allow cross-campus” in Settings first.',
     college: 'College',
     major: 'Major',
     specialFilter: 'Sports',
@@ -610,20 +999,22 @@ export const enUS = {
     jump: 'Jump',
     totalPages: '{count} pages'
   },
-  courseCard: {
-    markSelection: 'Mark include/exclude',
-    includeShort: 'Inc',
-    excludeShort: 'Exc',
-    noneShort: '□',
-    conflict: 'Conflict',
-    conflictNone: 'No conflict data',
-    statusLimited: 'Limited seats',
-    statusFull: 'Full',
-    teacherPending: 'Teacher TBD',
-    timeLabel: 'Time',
-    infoLabel: 'Info',
-    courseCodeLabel: 'Course code',
-    courseCodePending: 'Code pending',
+	  courseCard: {
+	    markSelection: 'Mark include/exclude',
+	    includeShort: 'Inc',
+	    excludeShort: 'Exc',
+	    noneShort: '□',
+	    conflict: 'Conflict',
+	    conflictNone: 'No conflict data',
+	    statusLimited: 'Limited seats',
+	    statusFull: 'Full',
+	    teacherLabel: 'Teacher',
+	    campusLabel: 'Campus',
+	    teacherPending: 'Teacher TBD',
+	    timeLabel: 'Time',
+	    infoLabel: 'Info',
+	    courseCodeLabel: 'Course code',
+	    courseCodePending: 'Code pending',
     creditLabel: 'Credit',
     creditValue: '{value} credits',
     creditPending: 'Credit pending',
@@ -639,6 +1030,8 @@ export const enUS = {
     exclude: 'Exclude',
     hard: 'Hard constraint',
     soft: 'Soft constraint',
+    desire: 'Desire',
+    avoid: 'Avoid',
     enabled: 'Enabled',
     disabled: 'Disabled',
     listSource: 'List buttons',
@@ -654,6 +1047,90 @@ export const enUS = {
       speedRace: 'Speed Race'
     }
   },
+  setupWizard: {
+    title: 'Setup',
+    progress: 'Step {current}/{total}',
+    termLabel: 'Term: {term}',
+    language: {
+      body: 'Choose interface language.',
+      hint: 'Auto follows your system language (and can be overridden by plugins/injections). You can change this anytime in Settings.',
+      options: {
+        auto: 'Auto',
+        zh: '简体中文',
+        en: 'English'
+      }
+    },
+    actions: {
+      back: 'Back',
+      next: 'Next',
+      finish: 'Finish',
+      close: 'Close'
+    },
+    welcome: {
+      body: 'You can use cloud course data as a fallback without logging in. Logging in to JWXT is optional.',
+      hint: 'If you log in, you can sync your selected courses and run enrollment actions (where supported).'
+    },
+    selectionMode: {
+      body: 'Please choose the enrollment mode for this term.',
+      allowOverflow: 'Allow Overflow',
+      speedRace: 'Speed Race',
+      hint: 'You can change this later in Settings.'
+    },
+    homeCampus: {
+      body: 'Choose your home campus.',
+      label: 'Home campus',
+      hint: 'Home campus is used as the default filter. If cross-campus is disabled, the campus filter will be locked.',
+      noOptions: 'No campus options are available in the current dataset. Please log in and crawl/fetch a snapshot, then reload the page and try again.',
+      unset: 'Not set'
+    },
+    login: {
+      body: 'Login to JWXT (optional). You can also skip this step and continue using cloud data only.',
+      methods: {
+        password: 'Password',
+        cookie: 'Cookie'
+      },
+      status: {
+        loggedIn: 'Logged in'
+      },
+      userId: 'Student ID',
+      password: 'Password',
+      cookieWarning: 'Only paste cookies you trust. Cookies may grant account access. Never share them.',
+      cookieHeader: 'Cookie header',
+      persistCookie: 'Encrypt and save cookie locally (WebCrypto)',
+      vaultPassword: 'Local vault password',
+      vaultPasswordConfirm: 'Confirm vault password',
+      unlockHint: 'If you have a saved cookie vault, unlock it to import the cookie again.',
+      actions: {
+        login: 'Login',
+        check: 'Check status',
+        importCookie: 'Import cookie',
+        unlockAndImport: 'Unlock & import'
+      },
+      errors: {
+        missingCredentials: 'Please enter student ID and password.',
+        missingCookie: 'Please paste a cookie header.',
+        vaultPasswordTooShort: 'Vault password is too short (min 6 chars).',
+        vaultPasswordMismatch: 'Vault passwords do not match.',
+        missingVaultPassword: 'Please enter vault password.',
+        loginFailed: 'Login failed. Please check your credentials.'
+      }
+    },
+    cloud: {
+      body: 'Fetch course data for the current term (recommended once).',
+      hint: 'If JWXT backend is available and you are logged in, it will crawl live data; otherwise it falls back to cloud snapshots.',
+      reloadHint: 'If crawling succeeds, reload the page to apply the new dataset.',
+      actions: {
+        fetch: 'Crawl data'
+      },
+      status: {
+        cached: 'Cached locally',
+        ok: 'Crawl succeeded',
+        progress: 'Progress: {done}/{total}',
+        roundSnapshotActivated: 'Cached round snapshot activated (refresh to apply).',
+        failed: 'Crawl failed'
+      }
+    }
+  },
   hover: {
     location: 'Location',
     termSpan: 'Term span',
@@ -667,8 +1144,8 @@ export const enUS = {
   },
   config: {
     themes: {
-      materialDesc: 'Google official @material/web components and tokens.',
-      fluentDesc: 'Microsoft @fluentui/web-components fluent theme.'
+      materialDesc: 'mdui runtime tokens (Material Design 3) via Virtual Theme Layer.',
+      fluentDesc: 'Fluent UI runtime tokens via Virtual Theme Layer.'
     },
     limitRules: {
       capacityFull: 'Capacity full',
@@ -744,7 +1221,8 @@ export const enUS = {
   },
   conflict: {
     hardConflict: 'Hard conflict: {targets}',
-    timeConflict: 'Time conflict: {overlaps}'
+    timeConflict: 'Time conflict: {overlaps}',
+    sameGroupSelected: 'Same group already selected'
   },
   courseCatalog: {
     weekdays: {

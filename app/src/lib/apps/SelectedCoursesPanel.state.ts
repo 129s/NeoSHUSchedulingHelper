@@ -1,40 +1,74 @@
 import type { CourseCatalogEntry } from '../data/catalog/courseCatalog';
-import { courseCatalog } from '../data/catalog/courseCatalog';
+import { courseCatalog, courseCatalogMap } from '../data/catalog/courseCatalog';
 import { activateHover, clearHover, hoveredCourse } from '../stores/courseHover';
 import { collapseCoursesByName } from '../stores/courseDisplaySettings';
-import {
-	deselectCourse as deselectCourseStore,
-	reselectCourse as reselectCourseStore,
-	selectedCourseIds
-} from '../stores/courseSelection';
-import { filterCourses, groupCoursesByName, sortCourses, getCourseVariants } from '../utils/courseHelpers';
+import { selectedCourseIds } from '../stores/courseSelection';
+import { filterCourses, sortCourses } from '../utils/courseHelpers';
+import { deriveGroupKey } from '../data/termState/groupKey';
+import type { GroupKey } from '../data/termState/types';
 import { derived, get, writable, type Readable } from 'svelte/store';
 import { createCourseFilterStore } from '../stores/courseFilters';
 import { applyCourseFilters } from '../utils/courseFilterEngine';
 import type { CourseFilterResult } from '../utils/courseFilterEngine';
+import { termState } from '../stores/termStateStore';
 
 export const collapseByName = collapseCoursesByName;
 export const expandedGroups = writable<Set<string>>(new Set());
-export const filters = createCourseFilterStore({ displayOption: 'all' });
+export const filters = createCourseFilterStore({ statusMode: 'selected:none' });
 
 const baseSelectedCourses = derived(selectedCourseIds, $ids =>
 	sortCourses(filterCourses(courseCatalog, $ids))
 );
 
+const wishlistSectionIds = derived(
+	termState,
+	($state) => new Set<string>((($state?.selection.wishlistSections ?? []) as unknown as string[]) ?? [])
+);
+
+const wishlistGroupKeys = derived(
+	termState,
+	($state) => new Set<string>((($state?.selection.wishlistGroups ?? []) as unknown as string[]) ?? [])
+);
+
+export const hasOrphanSelected = derived(
+	[selectedCourseIds, wishlistSectionIds, wishlistGroupKeys],
+	([$selected, $wishlistSections, $wishlistGroups]) => {
+		const wishlistedGroupKeys = new Set<string>();
+		for (const id of $wishlistSections) {
+			const entry = courseCatalogMap.get(id);
+			if (!entry) continue;
+			wishlistedGroupKeys.add(deriveGroupKey(entry) as unknown as string);
+		}
+		for (const key of $wishlistGroups) wishlistedGroupKeys.add(key);
+
+		for (const id of $selected) {
+			const entry = courseCatalogMap.get(id);
+			if (!entry) continue;
+			const groupKey = deriveGroupKey(entry) as unknown as string;
+			if (!wishlistedGroupKeys.has(groupKey)) return true;
+		}
+		return false;
+	}
+);
+
 const filterResult: Readable<CourseFilterResult> = derived(
-	[baseSelectedCourses, filters, selectedCourseIds],
-	([$courses, $filters, $selected]) =>
+	[baseSelectedCourses, filters, selectedCourseIds, wishlistSectionIds, wishlistGroupKeys, termState, collapseByName],
+	([$courses, $filters, $selected, $wishlistSections, $wishlistGroups, $termState, $collapse]) =>
 		applyCourseFilters($courses, $filters, {
 			selectedIds: $selected,
-			wishlistIds: new Set()
+			wishlistIds: $wishlistSections,
+			wishlistGroupKeys: $wishlistGroups,
+			changeScope: $termState?.solver.changeScope,
+			conflictGranularity: $collapse ? 'group' : 'section'
 		})
 );
 
 export const selectedCourses = derived(filterResult, $result => $result.items);
 export const filterMeta = derived(filterResult, $result => $result.meta);
 
-export const groupedEntries = derived([selectedCourses, collapseByName], ([$courses, $collapse]) =>
-	$collapse ? buildGroupedEntries($courses) : []
+export const groupedEntries: Readable<[GroupKey, CourseCatalogEntry[]][]> = derived(
+	[selectedCourses, collapseByName],
+	([$courses, $collapse]) => ($collapse ? buildGroupedEntries($courses) : [])
 );
 
 export const activeId = derived(hoveredCourse, $hovered => $hovered?.id ?? null);
@@ -65,27 +99,51 @@ export function toggleGroup(key: string) {
 	});
 }
 
-export function reselectCourse(id: string) {
-	reselectCourseStore(id);
+const courseGroupIndex: Map<GroupKey, CourseCatalogEntry[]> = (() => {
+	const map = new Map<GroupKey, CourseCatalogEntry[]>();
+	for (const entry of courseCatalog) {
+		const key = deriveGroupKey(entry);
+		const list = map.get(key) ?? [];
+		list.push(entry);
+		map.set(key, list);
+	}
+	for (const [key, list] of map.entries()) {
+		map.set(
+			key,
+			[...list].sort((a, b) => (a.slot || '').localeCompare(b.slot || '') || a.sectionId.localeCompare(b.sectionId))
+		);
+	}
+	return map;
+})();
+
+export function getGroupEntries(groupKey: GroupKey): CourseCatalogEntry[] {
+	return courseGroupIndex.get(groupKey) ?? [];
 }
 
-export function deselectCourse(id: string) {
-	deselectCourseStore(id);
-}
-
-export function variantsCount(id: string) {
-	return getCourseVariants(id, courseCatalog).length;
+export function variantsCountByGroupKey(groupKey: GroupKey): number {
+	return courseGroupIndex.get(groupKey)?.length ?? 0;
 }
 
 function allowHover(courseId: string) {
 	const meta = get(filterMeta).get(courseId);
 	if (!meta) return true;
-	if (meta.conflict === 'time-conflict') return false;
-	const labels = meta.diagnostics.map(d => d.label);
-	return !labels.includes('impossible') && !labels.includes('weak-impossible');
+	if (meta.timeConflict) return false;
+	if (meta.hardImpossible) return false;
+	if (meta.softImpossible) return false;
+	return true;
 }
 
 function buildGroupedEntries(courses: CourseCatalogEntry[]) {
-	const grouped = groupCoursesByName(courses);
-	return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+	const grouped = new Map<GroupKey, CourseCatalogEntry[]>();
+	for (const course of courses) {
+		const key = deriveGroupKey(course);
+		const list = grouped.get(key) ?? [];
+		list.push(course);
+		grouped.set(key, list);
+	}
+	return Array.from(grouped.entries()).sort((a, b) => {
+		const aTitle = a[1][0]?.title ?? '';
+		const bTitle = b[1][0]?.title ?? '';
+		return aTitle.localeCompare(bTitle, 'zh-CN') || String(a[0]).localeCompare(String(b[0]));
+	});
 }

@@ -11,8 +11,30 @@ export type TermStateValidationError =
 	| { kind: 'INVALID_ACTION'; message: string };
 
 export function validateActionAllowed(state: TermState, action: TermAction): TermStateValidationError | null {
+	if (state.settings.selectionMode === 'overflowSpeedRaceMode') {
+		const enablingAutoSolve =
+			action.type === 'SETTINGS_UPDATE' && action.patch.autoSolveEnabled === true;
+		const isAutoSolveAction = action.type.startsWith('AUTO_SOLVE_');
+			if (enablingAutoSolve || isAutoSolveAction) {
+				return { kind: 'INVALID_ACTION', message: '先到先得模式下禁用自动模式' };
+			}
+	}
+
 	if (state.jwxt.syncState === 'FROZEN') {
-		if (!action.type.startsWith('JWXT_') && !action.type.startsWith('DATASET_')) {
+		const solverSafe =
+			action.type === 'SOLVER_ADD_LOCK' ||
+			action.type === 'SOLVER_REMOVE_LOCK' ||
+			action.type === 'SOLVER_REMOVE_LOCK_MANY' ||
+			action.type === 'SOLVER_UPDATE_LOCK' ||
+			action.type === 'SOLVER_ADD_SOFT' ||
+			action.type === 'SOLVER_REMOVE_SOFT' ||
+			action.type === 'SOLVER_REMOVE_SOFT_MANY' ||
+			action.type === 'SOLVER_UPDATE_SOFT' ||
+			action.type === 'SOLVER_STAGING_ADD' ||
+			action.type === 'SOLVER_STAGING_ADD_MANY' ||
+			action.type === 'SOLVER_STAGING_REMOVE' ||
+			action.type === 'SOLVER_STAGING_CLEAR';
+		if (!solverSafe && !action.type.startsWith('JWXT_') && !action.type.startsWith('DATASET_')) {
 			return { kind: 'FROZEN_BLOCKED', message: '冻结中：仅允许 JWXT / 数据集修复操作' };
 		}
 	}
@@ -21,6 +43,22 @@ export function validateActionAllowed(state: TermState, action: TermAction): Ter
 		if (action.type.startsWith('DATASET_')) return null;
 		if (action.type === 'HIST_TOGGLE_TO_INDEX') return null;
 		if (action.type.startsWith('JWXT_')) return null;
+		if (
+			action.type === 'SOLVER_ADD_LOCK' ||
+			action.type === 'SOLVER_REMOVE_LOCK' ||
+			action.type === 'SOLVER_REMOVE_LOCK_MANY' ||
+			action.type === 'SOLVER_UPDATE_LOCK' ||
+			action.type === 'SOLVER_ADD_SOFT' ||
+			action.type === 'SOLVER_REMOVE_SOFT' ||
+			action.type === 'SOLVER_REMOVE_SOFT_MANY' ||
+			action.type === 'SOLVER_UPDATE_SOFT' ||
+			action.type === 'SOLVER_STAGING_ADD' ||
+			action.type === 'SOLVER_STAGING_ADD_MANY' ||
+			action.type === 'SOLVER_STAGING_REMOVE' ||
+			action.type === 'SOLVER_STAGING_CLEAR'
+		) {
+			return null;
+		}
 		return { kind: 'DATASET_FATAL_BLOCKED', message: '数据集已变化：请先在线更新数据集或切换为班次模式' };
 	}
 
@@ -47,13 +85,6 @@ export function validateStateInvariants(state: TermState): TermStateValidationEr
 		}
 	}
 
-	const selectedSet = new Set(state.selection.selected);
-	for (const entryId of state.selection.wishlistSections) {
-		if (selectedSet.has(entryId)) {
-			return { kind: 'INVALID_ACTION', message: 'selection-overlap-selected-wishlist' };
-		}
-	}
-
 	for (const entryId of state.selection.selected) {
 		if (!courseCatalogMap.has(entryId)) return { kind: 'UNKNOWN_ENTRY_ID', entryId };
 	}
@@ -75,6 +106,20 @@ export function validateStateInvariants(state: TermState): TermStateValidationEr
 		if (entryIds.length > 1) {
 			return { kind: 'DUPLICATE_SELECTED_GROUP', groupKey, entryIds };
 		}
+	}
+
+	const homeCampusRaw = (state.settings.homeCampus ?? '').trim();
+	if (!homeCampusRaw) {
+		return { kind: 'INVALID_ACTION', message: 'settings-homeCampus-missing' };
+	}
+	const normalizedHomeCampus = normalizeCampusForFilter(homeCampusRaw);
+	const campusSet = new Set<string>();
+	for (const entry of courseCatalogMap.values()) {
+		const campus = (entry.campus ?? '').trim();
+		if (campus) campusSet.add(normalizeCampusForFilter(campus));
+	}
+	if (campusSet.size > 0 && !campusSet.has(normalizedHomeCampus)) {
+		return { kind: 'INVALID_ACTION', message: 'settings-homeCampus-unknown' };
 	}
 
 	if (state.jwxt.syncState === 'FROZEN' && !state.jwxt.frozen) {
@@ -110,4 +155,11 @@ export function validateStateInvariants(state: TermState): TermStateValidationEr
 	}
 
 	return null;
+}
+
+function normalizeCampusForFilter(value: string) {
+	const normalized = value.trim();
+	if (!normalized) return '';
+	if (normalized.includes('宝山主区') || normalized.includes('宝山东区')) return '宝山';
+	return normalized;
 }

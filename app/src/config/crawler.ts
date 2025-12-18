@@ -1,11 +1,20 @@
-import path from 'node:path';
-
-export interface RemoteObjectStorage {
-	kind: 'object-storage';
-	endpoint: string;
-	bucket: string;
-	prefix?: string;
-	indexKey?: string;
+export interface RemoteCrawlerFiles {
+	/**
+	 * URL/path to `current.json`.
+	 *
+	 * Examples:
+	 * - `/crawler/data/current.json`
+	 * - `https://raw.githubusercontent.com/<user>/<repo>/<branch>/crawler/data/current.json`
+	 */
+	currentUrl: string;
+	/**
+	 * Base URL/path to `terms/` directory (must end with `/` or will be normalized).
+	 *
+	 * Examples:
+	 * - `/crawler/data/terms/`
+	 * - `https://<bucket-or-cdn>/crawler/data/terms/`
+	 */
+	termsBaseUrl: string;
 }
 
 export interface CrawlerSourceConfig {
@@ -13,7 +22,7 @@ export interface CrawlerSourceConfig {
 	localRoot: string;
 	termsDir: string;
 	indexFile: string;
-	remote?: RemoteObjectStorage;
+	remote?: RemoteCrawlerFiles;
 }
 
 export interface TermIndexEntry {
@@ -26,30 +35,55 @@ export interface TermIndexEntry {
 }
 
 export type CrawlerConfigOverrides = Partial<Omit<CrawlerSourceConfig, 'remote'>> & {
-	remote?: RemoteObjectStorage | null;
+	remote?: RemoteCrawlerFiles | null;
 };
+
+function readEnvNonEmpty(key: string): string | undefined {
+	const raw = (import.meta as any)?.env?.[key];
+	if (typeof raw !== 'string') return undefined;
+	const trimmed = raw.trim();
+	return trimmed ? trimmed : undefined;
+}
+
+function joinPath(root: string, ...parts: string[]) {
+	let out = root;
+	for (const part of parts) {
+		if (!part) continue;
+		out = out.replace(/\/+$/, '');
+		out += `/${part.replace(/^\/+/, '')}`;
+	}
+	return out;
+}
+
+function resolveLocalCrawlerRoot() {
+	const configured = (readEnvNonEmpty('VITE_CRAWLER_ROOT') ?? '..').replace(/\/+$/, '');
+	return configured.endsWith('/crawler') ? configured : joinPath(configured, 'crawler');
+}
+
+function resolveDefaultRemoteFiles(): RemoteCrawlerFiles | undefined {
+	const currentUrl = readEnvNonEmpty('VITE_CRAWLER_CURRENT_URL');
+	const termsBaseUrl = readEnvNonEmpty('VITE_CRAWLER_TERMS_BASE_URL');
+	if (!currentUrl || !termsBaseUrl) return undefined;
+	return { currentUrl, termsBaseUrl };
+}
 
 const DEFAULT_CONFIG: CrawlerSourceConfig = {
 	id: 'local-monorepo',
-	localRoot: path.resolve(import.meta.env?.VITE_CRAWLER_ROOT ?? '..', 'crawler'),
+	localRoot: resolveLocalCrawlerRoot(),
 	termsDir: 'data/terms',
 	indexFile: 'data/terms/index.json',
-	remote: {
-		kind: 'object-storage',
-		endpoint: import.meta.env?.VITE_CRAWLER_REMOTE_ENDPOINT ?? 'https://storage.example.com',
-		bucket: import.meta.env?.VITE_CRAWLER_REMOTE_BUCKET ?? 'shu-course-terms',
-		prefix: 'terms/',
-		indexKey: 'index.json'
-	}
+	remote: undefined
 };
 
 export function getCrawlerConfig(overrides?: CrawlerConfigOverrides): CrawlerSourceConfig {
+	const defaultRemote = resolveDefaultRemoteFiles();
+
 	const remote =
 		overrides?.remote === undefined
-			? DEFAULT_CONFIG.remote
+			? defaultRemote
 			: overrides.remote === null
 				? undefined
-				: { ...DEFAULT_CONFIG.remote, ...overrides.remote };
+				: { ...defaultRemote, ...overrides.remote };
 	return {
 		...DEFAULT_CONFIG,
 		...overrides,
@@ -58,9 +92,9 @@ export function getCrawlerConfig(overrides?: CrawlerConfigOverrides): CrawlerSou
 }
 
 export function resolveTermFile(termId: string, config: CrawlerSourceConfig = DEFAULT_CONFIG) {
-	return path.join(config.localRoot, config.termsDir, `${termId}.json`);
+	return joinPath(config.localRoot, config.termsDir, `${termId}.json`);
 }
 
 export function resolveIndexFile(config: CrawlerSourceConfig = DEFAULT_CONFIG) {
-	return path.join(config.localRoot, config.indexFile);
+	return joinPath(config.localRoot, config.indexFile);
 }

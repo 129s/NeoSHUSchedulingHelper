@@ -4,30 +4,33 @@
 	export type CapacityState = 'healthy' | 'warning' | 'critical' | 'empty';
 	import type { Actionable, Collapsible, Hoverable, MetaDisplay } from '$lib/ui/traits';
 
-	export type CourseCardContract = Hoverable &
-		Collapsible &
-		MetaDisplay &
-		Actionable & {
-			id: string;
-			title: string;
-			time: string;
-			courseCode?: string;
-			credit?: number | null;
-			showTime?: boolean;
-		};
+		export type CourseCardContract = Hoverable &
+			Collapsible &
+			MetaDisplay &
+			Actionable & {
+				id: string;
+				title: string;
+				time: string;
+				courseCode?: string;
+				credit?: number | null;
+				showTime?: boolean;
+				density?: 'normal' | 'dense';
+			};
 </script>
 
 <script lang="ts">
 	import { colorFromHash, adjustHslColor } from '$lib/utils/color';
 	import { translator } from '$lib/i18n';
 	import { hoveredCourse } from '$lib/stores/courseHover';
-import { formatConflictLabel } from '$lib/utils/diagnosticLabels';
-import { browser } from '$app/environment';
+	import { formatConflictLabel } from '$lib/utils/diagnosticLabels';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
+	import { crossCampusAllowed } from '$lib/stores/coursePreferences';
+	import { courseCatalogMap } from '$lib/data/catalog/courseCatalog';
 
 	export let id: string;
 	export let title: string;
 	export let teacher: string | null = null;
-	export let teacherId: string | undefined = undefined;
 	export let time: string;
 	export let courseCode: string | undefined = undefined;
 	export let credit: number | null = null;
@@ -42,11 +45,12 @@ import { browser } from '$app/environment';
 	export let onHover: (() => void) | undefined;
 	export let onLeave: (() => void) | undefined;
 	export let toneIndex = 0;
-	export let selectable = false;
-	export let selectState: 'include' | 'exclude' | null = null;
-	export let onToggleSelect: (() => void) | undefined = undefined;
-	export let showConflictBadge: boolean | undefined = undefined;
-	export let conflictDetails: Array<{ label: string; value?: string }> | null = null;
+	export let density: 'normal' | 'dense' = 'normal';
+		export let selectable = false;
+		export let selectState: 'include' | 'exclude' | null = null;
+		export let onToggleSelect: (() => void) | undefined = undefined;
+		export let showConflictBadge: boolean | undefined = undefined;
+		export let conflictDetails: Array<{ label: string; value?: string }> | null = null;
 
 	// Bidirectional hover highlighting - P2-8b
 	$: isHighlighted = $hoveredCourse?.id === id && $hoveredCourse?.source !== 'list';
@@ -70,7 +74,7 @@ import { browser } from '$app/environment';
 	$: overflow = vacancy < 0;
 	$: ringState = computeCapacityState({ occupancy, remaining, overflow });
 	$: ringColorToken = RING_COLORS[ringState];
-	$: showRing = !collapsed;
+	$: showRing = !collapsed && capacity > 0;
 	$: baseColor = colorFromHash(colorSeed, { saturation: 60, lightness: 55 });
 	$: markerColor = adjustForContrast(baseColor, toneIndex);
 
@@ -105,15 +109,30 @@ import { browser } from '$app/environment';
 		return adjustHslColor(color, { lightnessDelta: delta });
 	}
 
-let t = (key: string) => key;
-$: t = $translator;
-$: includeLabel = t('courseCard.includeShort');
-$: excludeLabel = t('courseCard.excludeShort');
-$: noneLabel = t('courseCard.noneShort');
+	let t = (key: string) => key;
+	$: t = $translator;
+	$: includeLabel = t('courseCard.includeShort');
+	$: excludeLabel = t('courseCard.excludeShort');
+	$: noneLabel = t('courseCard.noneShort');
 	$: conflictLabel = t('courseCard.conflict');
+	$: timeValue = time || t('courseCard.noTime');
+	$: courseCodeValue = courseCode ?? t('courseCard.courseCodePending');
+	$: creditValue = typeof credit === 'number' ? credit.toString() : t('courseCard.creditPending');
+	$: teacherValue = teacher?.trim() ?? '';
+	$: teacherLabel = t('courseCard.teacherLabel');
+	$: campusLabel = t('courseCard.campusLabel');
+	$: campusValue = courseCatalogMap.get(id)?.campus ?? '';
 
 	let titleElement: HTMLDivElement | null = null;
 	let truncatedTitleTooltip: string | null = null;
+
+	let kvGridElement: HTMLDivElement | null = null;
+	let ro: ResizeObserver | null = null;
+	let roTimer: ReturnType<typeof setTimeout> | null = null;
+	let kvWantsPills = false;
+	let usePills = false;
+
+	$: usePills = density === 'dense' || kvWantsPills;
 
 	$: {
 		if (browser && titleElement) {
@@ -124,18 +143,52 @@ $: noneLabel = t('courseCard.noneShort');
 			truncatedTitleTooltip = null;
 		}
 	}
+
+	function recomputeKvLayout() {
+		if (!kvGridElement) return;
+		const items = Array.from(kvGridElement.querySelectorAll<HTMLElement>('.kv'));
+		if (!items.length) {
+			kvWantsPills = false;
+			return;
+		}
+		const rowTops = new Set<number>();
+		for (const el of items) {
+			rowTops.add(Math.round(el.offsetTop));
+		}
+		kvWantsPills = rowTops.size > 2;
+	}
+
+	onMount(() => {
+		if (!browser) return;
+		if (!kvGridElement) return;
+		if (density === 'dense') return;
+
+		ro = new ResizeObserver(() => {
+			if (roTimer) clearTimeout(roTimer);
+			roTimer = setTimeout(recomputeKvLayout, 60);
+		});
+		ro.observe(kvGridElement);
+
+		requestAnimationFrame(recomputeKvLayout);
+		return () => {
+			ro?.disconnect();
+			ro = null;
+			if (roTimer) clearTimeout(roTimer);
+			roTimer = null;
+		};
+	});
 </script>
 
-<article
-	class={`course-card ${collapsed ? 'collapsed' : ''} ${hoverable ? 'hoverable' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+	<article
+		class={`course-card density-${density} ${usePills ? 'use-pills' : ''} ${collapsed ? 'collapsed' : ''} ${hoverable ? 'hoverable' : ''} ${isHighlighted ? 'highlighted' : ''}`}
 	on:mouseenter={onHover}
 	on:mouseleave={onLeave}
 	on:focus={onHover}
 	on:blur={onLeave}
-	data-id={id}
-	data-status={status ?? undefined}
-	aria-label={`${title} - ${(teacher ?? teacherId) ?? ''} - ${time}`}
->
+		data-id={id}
+		data-status={status ?? undefined}
+		aria-label={`${title}${teacherValue ? ` - ${teacherValue}` : ''} - ${timeValue}`}
+	>
 	<div class="color-marker" style={`background:${markerColor};`}></div>
 	<div class="meta-column">
 		{#if showRing}
@@ -170,8 +223,12 @@ $: noneLabel = t('courseCard.noneShort');
 				{selectState === 'include' ? includeLabel : selectState === 'exclude' ? excludeLabel : noneLabel}
 			</button>
 		{/if}
-		<slot name="meta-controls" />
-	</div>
+		{#if $$slots['meta-controls']}
+			<div class="meta-controls-slot">
+				<slot name="meta-controls" />
+			</div>
+		{/if}
+		</div>
 	<div class="card-body">
 		<div class="column title-col">
 			<div class="title-row">
@@ -216,55 +273,164 @@ $: noneLabel = t('courseCard.noneShort');
 					</span>
 				{/if} -->
 			</div>
-		</div>
-		{#if showTime}
-			<div class="column time-col">
-				<div class="label">{t('courseCard.timeLabel')}</div>
-				<div class="value">{time || t('courseCard.noTime')}</div>
-			</div>
-		{/if}
-		<div class="column info-col">
-			<div class="info-grid">
-				<div>
-					<div class="label">{t('courseCard.courseCodeLabel')}</div>
-					<div class="value info-block">
+			<div class="kv-grid" bind:this={kvGridElement} aria-hidden={usePills}>
+				{#if showTime}
+					<div class="kv" title={`${t('courseCard.timeLabel')}: ${timeValue}`}>
+						<span class="kv-label">{t('courseCard.timeLabel')}</span>
+						<span class="kv-value">{timeValue}</span>
+					</div>
+				{/if}
+				{#if teacherValue}
+					<div class="kv" title={`${teacherLabel}: ${teacherValue}`}>
+						<span class="kv-label">{teacherLabel}</span>
+						<span class="kv-value">{teacherValue}</span>
+					</div>
+				{/if}
+				{#if $crossCampusAllowed && campusValue}
+					<div class="kv" title={`${campusLabel}: ${campusValue}`}>
+						<span class="kv-label">{campusLabel}</span>
+						<span class="kv-value">{campusValue}</span>
+					</div>
+				{/if}
+				<div class="kv" title={`${t('courseCard.courseCodeLabel')}: ${courseCodeValue}`}>
+					<span class="kv-label">{t('courseCard.courseCodeLabel')}</span>
+					<span class="kv-value">
 						{#if courseCode}
-							<span class="info-primary">{courseCode}</span>
+							{courseCode}
 						{:else}
-							<span class="info-muted">{t('courseCard.courseCodePending')}</span>
+							<span class="info-muted">{courseCodeValue}</span>
 						{/if}
-					</div>
+					</span>
 				</div>
-				<div>
-					<div class="label">{t('courseCard.creditLabel')}</div>
-					<div class="value info-block">
+				<div class="kv" title={`${t('courseCard.creditLabel')}: ${creditValue}`}>
+					<span class="kv-label">{t('courseCard.creditLabel')}</span>
+					<span class="kv-value">
 						{#if typeof credit === 'number'}
-							<span>{t('courseCard.creditValue').replace('{value}', credit.toString())}</span>
+							{creditValue}
 						{:else}
-							<span class="info-muted">{t('courseCard.creditPending')}</span>
+							<span class="info-muted">{creditValue}</span>
 						{/if}
-					</div>
+					</span>
 				</div>
 			</div>
+			<div class="meta-line" aria-hidden={!usePills}>
+				{#if showTime}
+					<span class="meta-pill">{t('courseCard.timeLabel')}: {timeValue}</span>
+				{/if}
+				{#if teacherValue}
+					<span class="meta-pill">{teacherLabel}: {teacherValue}</span>
+				{/if}
+				{#if $crossCampusAllowed && campusValue}
+					<span class="meta-pill">{campusLabel}: {campusValue}</span>
+				{/if}
+				<span class="meta-pill">{t('courseCard.courseCodeLabel')}: {courseCodeValue}</span>
+				<span class="meta-pill">{t('courseCard.creditLabel')}: {creditValue}</span>
+			</div>
 		</div>
-		<div class="actions">
-			<slot name="actions" />
+			<div class="actions">
+				<slot name="actions" />
+			</div>
+			{#if $$slots.default}
+				<div class="default-slot">
+					<slot />
+				</div>
+			{/if}
 		</div>
-	</div>
-</article>
+	</article>
 <style>
-	.course-card {
-		position: relative;
-		display: flex;
-		align-items: flex-start;
-		gap: var(--app-space-4);
-		padding: var(--app-space-4) var(--app-space-5);
+		.course-card {
+			position: relative;
+			--course-card-meta-column-min-normal: 72px;
+			--course-card-ring-size-normal: 60px;
+			--course-card-gap: var(--app-space-3);
+			--course-card-pad-y: var(--app-space-3);
+			--course-card-pad-x: var(--app-space-4);
+			--meta-column-min: var(--course-card-meta-column-min-normal);
+			--ring-size: var(--course-card-ring-size-normal);
+			--course-card-title-lines: 2;
+			--course-card-title-size: var(--app-text-lg);
+			--course-card-kv-grid-max-h: 999px;
+			--course-card-kv-grid-mt: var(--app-space-1);
+			--course-card-meta-line-max-h: 0px;
+			--course-card-meta-line-mt: 0px;
+			--course-card-meta-line-row-gap: var(--app-space-1);
+			--course-card-body-gap: var(--app-space-3);
+			--course-card-actions-gap: var(--app-space-1);
+			--course-card-title-row-gap: var(--app-space-2);
+			--course-card-meta-pill-height: 1.5rem;
+			display: flex;
+			align-items: flex-start;
+			gap: var(--course-card-gap);
+			padding: var(--course-card-pad-y) var(--course-card-pad-x);
 		border-radius: var(--app-radius-lg);
 		border: 1px solid var(--app-color-border-subtle);
 		background: var(--app-color-bg);
 		min-width: 0;
 		color: var(--app-color-fg);
 		transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+	}
+
+		.course-card.density-dense {
+			--course-card-gap: var(--app-space-2);
+			--course-card-pad-y: var(--app-space-2);
+			--course-card-pad-x: var(--app-space-3);
+			--meta-column-min: calc(var(--course-card-meta-column-min-normal) - var(--app-space-5));
+			--ring-size: calc(var(--course-card-ring-size-normal) - var(--app-space-4));
+			--course-card-title-lines: 1;
+			--course-card-title-size: var(--app-text-md);
+			--course-card-kv-grid-max-h: 0px;
+			--course-card-kv-grid-mt: 0px;
+			--course-card-meta-line-max-h: 999px;
+			--course-card-meta-line-mt: 0px;
+			--course-card-body-gap: var(--app-space-1);
+			--course-card-actions-gap: var(--app-space-1);
+			--course-card-title-row-gap: var(--app-space-2);
+			--course-card-meta-pill-height: 1.35rem;
+		}
+
+	.course-card.density-dense .meta-column {
+		gap: var(--app-space-2);
+	}
+
+	.course-card.density-dense .meta-controls-slot {
+		left: calc(4px + var(--app-space-3));
+		bottom: var(--app-space-2);
+	}
+
+		.course-card.density-dense .title-row {
+			flex-wrap: nowrap;
+			overflow: hidden;
+		}
+
+		.course-card.density-dense .title-main {
+			overflow: hidden;
+		}
+
+		.course-card.density-dense .title-col {
+			min-width: 0;
+			flex: 1 1 auto;
+		}
+
+	.course-card.density-dense .title {
+		font-size: var(--course-card-title-size);
+		line-clamp: var(--course-card-title-lines);
+		-webkit-line-clamp: var(--course-card-title-lines);
+	}
+
+	.course-card.density-dense .meta-pill {
+		padding: 0 var(--app-space-1);
+		font-size: var(--app-text-xs);
+	}
+
+	.course-card.density-dense .tags {
+		display: none;
+	}
+
+	.course-card.use-pills {
+		--course-card-kv-grid-max-h: 0px;
+		--course-card-kv-grid-mt: 0px;
+		--course-card-meta-line-max-h: 999px;
+		--course-card-meta-line-mt: var(--app-space-1);
 	}
 
 	.course-card.hoverable:hover,
@@ -281,13 +447,28 @@ $: noneLabel = t('courseCard.noneShort');
 		background: color-mix(in srgb, var(--app-color-primary) 85%, transparent);
 	}
 
-	.meta-column {
+		.meta-column {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: var(--app-space-2);
+			flex: 0 0 auto;
+			min-width: var(--meta-column-min);
+		}
+
+	.meta-controls-slot {
+		position: absolute;
+		left: calc(4px + var(--app-space-4));
+		bottom: var(--app-space-3);
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		gap: var(--app-space-3);
-		flex: 0 0 auto;
-		min-width: 72px;
+		gap: var(--app-space-2);
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.meta-controls-slot > :global(*) {
+		pointer-events: auto;
 	}
 
 	.capacity-col {
@@ -299,8 +480,8 @@ $: noneLabel = t('courseCard.noneShort');
 
 	.ring {
 		position: relative;
-		width: 60px;
-		height: 60px;
+		width: var(--ring-size);
+		height: var(--ring-size);
 		display: grid;
 		place-items: center;
 		border-radius: 50%;
@@ -371,35 +552,103 @@ $: noneLabel = t('courseCard.noneShort');
 		color: var(--app-color-danger);
 	}
 
-	.card-body {
-		display: flex;
-		flex: 1 1 auto;
-		min-width: 0;
-		flex-wrap: wrap;
-		align-items: flex-start;
-		gap: var(--app-space-4);
-	}
+		.card-body {
+			display: flex;
+			flex: 1 1 auto;
+			min-width: 0;
+			flex-wrap: wrap;
+			align-items: flex-start;
+			gap: var(--course-card-body-gap);
+		}
 
-	.column {
-		display: flex;
-		flex-direction: column;
-		gap: var(--app-space-2);
-		flex: 1 1 clamp(12rem, 30%, 20rem);
-		min-width: min(12rem, 100%);
-		min-height: 0;
-	}
+		.default-slot {
+			display: none;
+		}
+
+		.column {
+			display: flex;
+			flex-direction: column;
+			gap: var(--app-space-1);
+			flex: 1 1 clamp(12rem, 30%, 20rem);
+			min-width: min(10rem, 100%);
+			min-height: 0;
+		}
 
 	.title-col {
 		flex: 2 1 clamp(16rem, 45%, 28rem);
-		min-width: min(14rem, 100%);
+		min-width: min(12rem, 100%);
+		gap: 0;
 	}
 
 	.title-row {
 		display: flex;
 		align-items: flex-start;
-		gap: var(--app-space-3);
+		gap: var(--course-card-title-row-gap);
 		flex-wrap: wrap;
 		min-width: 0;
+	}
+
+		.kv-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+			column-gap: clamp(var(--app-space-2), 2vw, var(--app-space-4));
+			row-gap: var(--app-space-1);
+			margin-top: var(--course-card-kv-grid-mt);
+			max-height: var(--course-card-kv-grid-max-h);
+			overflow: hidden;
+			min-width: 0;
+		}
+
+		.kv {
+			display: flex;
+			align-items: baseline;
+			gap: var(--app-space-1);
+			min-width: 0;
+			white-space: nowrap;
+		}
+
+		.kv-label {
+			flex: 0 0 auto;
+			font-size: var(--app-text-sm);
+			color: var(--app-color-fg-muted);
+		}
+
+		.kv-value {
+			flex: 1 1 auto;
+			min-width: 0;
+			font-size: var(--app-text-md);
+			font-weight: 500;
+			color: var(--app-color-fg);
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.meta-line {
+			display: flex;
+			align-items: flex-start;
+			flex-wrap: wrap;
+			column-gap: var(--app-space-2);
+			row-gap: var(--course-card-meta-line-row-gap);
+			min-width: 0;
+			margin-top: var(--course-card-meta-line-mt);
+			max-height: var(--course-card-meta-line-max-h);
+			overflow: hidden;
+		}
+
+	.meta-pill {
+		display: inline-flex;
+		align-items: center;
+		min-width: 0;
+		max-width: 100%;
+		padding: 0 var(--app-space-2);
+		min-height: var(--course-card-meta-pill-height);
+		border-radius: 999px;
+		border: 1px solid var(--app-color-border-subtle);
+		background: var(--app-color-bg-elevated);
+		font-size: var(--app-text-sm);
+		color: color-mix(in srgb, var(--app-color-fg) 90%, transparent);
+		white-space: normal;
+		word-break: break-word;
 	}
 
 	.title-main {
@@ -411,12 +660,12 @@ $: noneLabel = t('courseCard.noneShort');
 	}
 
 	.title {
-		font-size: var(--app-text-lg);
+		font-size: var(--course-card-title-size);
 		font-weight: 600;
 		line-height: 1.3;
 		display: -webkit-box;
-		line-clamp: 2;
-		-webkit-line-clamp: 2;
+		line-clamp: var(--course-card-title-lines);
+		-webkit-line-clamp: var(--course-card-title-lines);
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 		word-break: auto-phrase;
@@ -424,10 +673,10 @@ $: noneLabel = t('courseCard.noneShort');
 		white-space: normal;
 	}
 
-	.label {
-		font-size: var(--app-text-sm);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		.label {
+			font-size: var(--app-text-sm);
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
 		color: var(--app-color-fg-muted);
 	}
 
@@ -439,30 +688,23 @@ $: noneLabel = t('courseCard.noneShort');
 		color: var(--app-color-fg);
 	}
 
-	.info-col .info-campus {
-		color: color-mix(in srgb, var(--app-color-fg) 70%, transparent);
-	}
+		.info-block {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: var(--app-space-1);
+			min-height: 0;
+		}
 
-	.info-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-		gap: var(--app-space-3);
-	}
-
-	.info-block {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: var(--app-space-2);
-		min-height: 0;
-	}
+		.info-block .info-primary,
+		.info-block .info-muted {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
 
 	.info-muted {
 		color: color-mix(in srgb, var(--app-color-fg) 45%, transparent);
-	}
-
-	.info-col .divider {
-		color: color-mix(in srgb, var(--app-color-fg) 20%, transparent);
 	}
 
 	.actions {
@@ -472,7 +714,7 @@ $: noneLabel = t('courseCard.noneShort');
 		justify-content: flex-end;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: var(--app-space-2);
+		gap: var(--course-card-actions-gap);
 		margin-left: auto;
 	}
 
@@ -568,48 +810,36 @@ $: noneLabel = t('courseCard.noneShort');
 		}
 	}
 
-	@container panel-shell (max-width: 720px) {
-		.course-card {
-			flex-wrap: wrap;
-			padding: var(--app-space-4);
+		@container panel-shell (max-width: 520px) {
+			.course-card {
+				--meta-column-min: calc(var(--course-card-meta-column-min-normal) - var(--app-space-3));
+				--ring-size: calc(var(--course-card-ring-size-normal) - var(--app-space-2));
+				--course-card-title-lines: 1;
+				--course-card-title-size: var(--app-text-md);
+			}
 		}
-
-		.card-body {
-			width: 100%;
-		}
-
-		.actions {
-			width: 100%;
-		}
-	}
-
-	@container panel-shell (max-width: 560px) {
-		.column,
-		.actions {
-			flex-basis: 100%;
-			min-width: 100%;
-		}
-
-		.actions {
-			justify-content: flex-start;
-		}
-	}
 
 	@container panel-shell (max-width: 420px) {
 		.course-card {
-			gap: var(--app-space-3);
-			padding: var(--app-space-3);
-		}
-
-		.title {
-			font-size: var(--app-text-md);
+			--course-card-gap: var(--app-space-3);
+			--course-card-pad-y: var(--app-space-3);
+			--course-card-pad-x: var(--app-space-3);
+			--meta-column-min: calc(var(--course-card-meta-column-min-normal) - var(--app-space-5));
+			--ring-size: calc(var(--course-card-ring-size-normal) - var(--app-space-4));
+			--course-card-title-lines: 1;
+			--course-card-title-size: var(--app-text-md);
 		}
 	}
 
 	@container panel-shell (max-width: 360px) {
+		.course-card {
+			--course-card-meta-pill-height: 1.45rem;
+		}
+
 		.meta-column {
 			flex-direction: column;
 			align-items: flex-start;
+			gap: var(--app-space-2);
 		}
 
 		.capacity-col .ring {
@@ -629,13 +859,71 @@ $: noneLabel = t('courseCard.noneShort');
 			position: static;
 			text-shadow: none;
 		}
+
+		.meta-pill {
+			padding: 0 var(--app-space-1);
+			font-size: var(--app-text-xs);
+		}
 	}
 
 	@supports not (container-type: inline-size) {
-		@media (max-width: 640px) {
-			.column,
-			.actions {
-				flex-basis: 100%;
+		@media (max-width: 520px) {
+			.course-card {
+				--meta-column-min: 60px;
+				--ring-size: 52px;
+				--course-card-title-lines: 1;
+				--course-card-title-size: var(--app-text-md);
+			}
+		}
+
+		@media (max-width: 420px) {
+			.course-card {
+				--course-card-gap: var(--app-space-3);
+				--course-card-pad-y: var(--app-space-3);
+				--course-card-pad-x: var(--app-space-3);
+				--meta-column-min: 52px;
+				--ring-size: 44px;
+			}
+
+			.title {
+				font-size: var(--app-text-md);
+				line-clamp: 1;
+				-webkit-line-clamp: 1;
+			}
+		}
+
+		@media (max-width: 360px) {
+			.course-card {
+				--course-card-meta-pill-height: 1.45rem;
+			}
+
+			.meta-column {
+				flex-direction: column;
+				align-items: flex-start;
+				gap: var(--app-space-2);
+			}
+
+			.capacity-col .ring {
+				width: auto;
+				height: auto;
+				padding: var(--app-space-1) var(--app-space-2);
+				border: 1px solid color-mix(in srgb, var(--ring-color) 35%, transparent);
+				border-radius: var(--app-radius-md);
+			}
+
+			.capacity-col .ring::after,
+			.capacity-col .ring svg {
+				display: none;
+			}
+
+			.ring-text {
+				position: static;
+				text-shadow: none;
+			}
+
+			.meta-pill {
+				padding: 0 var(--app-space-1);
+				font-size: var(--app-text-xs);
 			}
 		}
 	}

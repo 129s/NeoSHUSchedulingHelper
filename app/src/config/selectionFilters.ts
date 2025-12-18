@@ -1,6 +1,6 @@
 import { t } from '../lib/i18n';
 
-export type RegexTargetField = 'title' | 'teacher' | 'note';
+export type RegexTargetField = 'courseCode' | 'title' | 'teacher' | 'note';
 
 export interface RegexFilterConfig {
 	enabled: boolean;
@@ -52,7 +52,7 @@ const DEFAULT_SELECTION_FILTERS: SelectionFiltersConfig = {
 		enabled: true,
 		caseSensitive: false,
 		mode: 'combined',
-		targets: ['title', 'teacher', 'note']
+		targets: ['courseCode', 'title', 'teacher', 'note']
 	},
 	limitRules: {
 		capacityFull: {

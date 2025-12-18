@@ -1,25 +1,43 @@
 import type { HardConstraint, SoftConstraint, SolverResult, ConstraintVariable } from './ConstraintSolver';
 import { ConstraintSolver } from './ConstraintSolver';
 import { init } from 'z3-solver';
-import type { Context } from 'z3-solver';
+import type { Bool, Context, Optimize } from 'z3-solver';
+import z3BuiltWasmUrl from 'z3-solver/build/z3-built.wasm?url';
+import z3BuiltJsUrl from 'z3-solver/build/z3-built.js?url';
 
 type Z3Api = Awaited<ReturnType<typeof init>>;
 let z3Promise: Promise<Z3Api> | null = null;
 let initZ3Promise: Promise<void> | null = null;
 
 async function ensureBrowserInitZ3Loaded() {
-	if (typeof window === 'undefined') return;
+	if (import.meta.env?.SSR) return;
 
 	const root = globalThis as unknown as { initZ3?: unknown };
 	if (root.initZ3) return;
 
 	if (!initZ3Promise) {
 		initZ3Promise = import('z3-solver/build/z3-built.js').then((module) => {
-			const initZ3 = (module as unknown as { default?: unknown }).default;
-			if (typeof initZ3 !== 'function') {
+			const initZ3Raw = (module as unknown as { default?: unknown }).default;
+			if (typeof initZ3Raw !== 'function') {
 				throw new Error('Z3 initZ3 模块加载失败（未找到默认导出）');
 			}
-			(root as { initZ3?: unknown }).initZ3 = initZ3;
+
+			const locateFile = (path: string) => {
+				if (path.endsWith('.wasm')) return z3BuiltWasmUrl;
+				try {
+					return new URL(path, z3BuiltWasmUrl).toString();
+				} catch {
+					return path;
+				}
+			};
+
+			(root as { initZ3?: unknown }).initZ3 = (moduleOverrides: Record<string, unknown> = {}) =>
+				(initZ3Raw as (options?: Record<string, unknown>) => unknown)({
+					...moduleOverrides,
+					// Emscripten pthreads need an explicit main script URL in ESM/dev-server contexts.
+					mainScriptUrlOrBlob: z3BuiltJsUrl,
+					locateFile
+				});
 		});
 	}
 
@@ -29,6 +47,10 @@ async function ensureBrowserInitZ3Loaded() {
 export class Z3Solver extends ConstraintSolver {
 	private api: Z3Api | null = null;
 	private ctx: Context<'main'> | null = null;
+	private varMap = new Map<string, Bool<'main'>>();
+	private baseOptimize: Optimize<'main'> | null = null;
+	private baseKey: string | null = null;
+	private solveQueue: Promise<void> = Promise.resolve();
 
 	async init() {
 		if (this.ctx) return;
@@ -40,71 +62,189 @@ export class Z3Solver extends ConstraintSolver {
 		this.ctx = this.api.Context('main');
 	}
 
+	private enqueue<T>(work: () => Promise<T>): Promise<T> {
+		const run = this.solveQueue.then(work, work);
+		this.solveQueue = run.then(
+			() => {},
+			() => {}
+		);
+		return run;
+	}
+
+	private getVar(id: string) {
+		if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+		let entry = this.varMap.get(id);
+		if (!entry) {
+			entry = this.ctx.Bool.const(id);
+			this.varMap.set(id, entry);
+		}
+		return entry;
+	}
+
+	private addHardConstraints(optimize: Optimize<'main'>, hard: HardConstraint[]) {
+		if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+		for (const constraint of hard) {
+			switch (constraint.type) {
+				case 'require': {
+					const v = this.getVar(constraint.variable);
+					optimize.add(constraint.value ? v : v.not());
+					break;
+				}
+				case 'atLeastOne': {
+					if (constraint.variables.length === 0) break;
+					if (constraint.variables.length === 1) {
+						optimize.add(this.getVar(constraint.variables[0]!));
+						break;
+					}
+					optimize.add(this.ctx.Or(...constraint.variables.map((id) => this.getVar(id))));
+					break;
+				}
+				case 'mutex': {
+					if (constraint.variables.length <= 1) break;
+					if (constraint.variables.length === 2) {
+						const [a, b] = constraint.variables;
+						optimize.add(this.ctx.Or(this.getVar(a!).not(), this.getVar(b!).not()));
+						break;
+					}
+					const pairs = pairwise(constraint.variables);
+					pairs.forEach(([a, b]) => {
+						optimize.add(this.ctx!.Or(this.getVar(a).not(), this.getVar(b).not()));
+					});
+					break;
+				}
+				case 'custom':
+					// custom expressions暂未实现
+					break;
+			}
+		}
+	}
+
+	private addSoftConstraints(optimize: Optimize<'main'>, soft: SoftConstraint[]) {
+		if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+		for (const constraint of soft) {
+			if (constraint.variables.length === 0) continue;
+			const literal =
+				constraint.prefer === false
+					? this.ctx.Not(this.ctx.Or(...constraint.variables.map((id) => this.getVar(id))))
+					: constraint.variables.length === 1
+						? this.getVar(constraint.variables[0]!)
+						: this.ctx.Or(...constraint.variables.map((id) => this.getVar(id)));
+			optimize.addSoft(literal, constraint.weight, constraint.id);
+		}
+	}
+
+	private ensureBaseOptimize(config: {
+		variables: ConstraintVariable[];
+		baseHard: HardConstraint[];
+		baseKey: string;
+	}) {
+		if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+		if (this.baseOptimize && this.baseKey === config.baseKey) return;
+
+		try {
+			this.baseOptimize?.release();
+		} catch {
+			// best-effort
+		}
+		this.baseOptimize = new this.ctx.Optimize();
+		this.baseKey = config.baseKey;
+		this.varMap.clear();
+
+		for (const variable of config.variables) this.getVar(variable.id);
+		this.addHardConstraints(this.baseOptimize, config.baseHard);
+	}
+
+	async solveWithBase(config: {
+		variables: ConstraintVariable[];
+		baseHard: HardConstraint[];
+		baseKey: string;
+		hard: HardConstraint[];
+		soft?: SoftConstraint[];
+	}): Promise<SolverResult> {
+		return this.enqueue(async () => {
+			if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+
+			this.ensureBaseOptimize({ variables: config.variables, baseHard: config.baseHard, baseKey: config.baseKey });
+			const optimize = this.baseOptimize!;
+
+			optimize.push();
+			try {
+				this.addHardConstraints(optimize, config.hard);
+				if (config.soft?.length) this.addSoftConstraints(optimize, config.soft);
+
+				const result = await optimize.check();
+				const satisfiable = result === 'sat';
+				if (!satisfiable) {
+					return { satisfiable: false, unsatCore: [] };
+				}
+
+				const model = optimize.model();
+				try {
+					const assignment: Record<string, boolean> = {};
+					for (const variable of config.variables) {
+						const evaluated = model.eval(this.getVar(variable.id), true);
+						assignment[variable.id] = this.ctx.isTrue(evaluated);
+					}
+					return { satisfiable: true, assignment };
+				} finally {
+					try {
+						model.release();
+					} catch {
+						// best-effort
+					}
+				}
+			} finally {
+				optimize.pop();
+			}
+		});
+	}
+
 	async solve(config: {
 		variables: ConstraintVariable[];
 		hard: HardConstraint[];
 		soft?: SoftConstraint[];
 	}): Promise<SolverResult> {
-		if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
+		return this.enqueue(async () => {
+			if (!this.ctx) throw new Error('Z3Solver 尚未初始化');
 
-		const optimize = new this.ctx.Optimize();
-		const varMap = new Map<string, ReturnType<typeof this.ctx.Bool.const>>();
-		const getVar = (id: string) => {
-			let entry = varMap.get(id);
-			if (!entry) {
-				entry = this.ctx!.Bool.const(id);
-				varMap.set(id, entry);
+			const optimize = new this.ctx.Optimize();
+			for (const variable of config.variables) this.getVar(variable.id);
+
+			this.addHardConstraints(optimize, config.hard);
+			if (config.soft?.length) this.addSoftConstraints(optimize, config.soft);
+
+			const result = await optimize.check();
+			const satisfiable = result === 'sat';
+			if (!satisfiable) {
+				try {
+					optimize.release();
+				} catch {
+					// best-effort
+				}
+				return { satisfiable: false, unsatCore: [] };
 			}
-			return entry;
-		};
 
-		config.variables.forEach((variable) => getVar(variable.id));
-
-		config.hard.forEach((constraint) => {
-			switch (constraint.type) {
-				case 'require':
-					optimize.add(constraint.value ? getVar(constraint.variable) : getVar(constraint.variable).not());
-					break;
-				case 'atLeastOne':
-					optimize.add(this.ctx!.Or(...constraint.variables.map((id) => getVar(id))));
-					break;
-				case 'mutex':
-					const pairs = pairwise(constraint.variables);
-					pairs.forEach(([a, b]) => {
-						optimize.add(this.ctx!.Or(getVar(a).not(), getVar(b).not()));
-					});
-					break;
-				case 'custom':
-					// custom expressions暂未实现
-					break;
+			const model = optimize.model();
+			try {
+				const assignment: Record<string, boolean> = {};
+				for (const variable of config.variables) {
+					const evaluated = model.eval(this.getVar(variable.id), true);
+					assignment[variable.id] = this.ctx.isTrue(evaluated);
+				}
+				return { satisfiable: true, assignment };
+			} finally {
+				try {
+					model.release();
+				} catch {
+					// best-effort
+				}
+				try {
+					optimize.release();
+				} catch {
+					// best-effort
+				}
 			}
 		});
-
-		config.soft?.forEach((constraint) => {
-			const literal =
-				constraint.prefer === false
-					? this.ctx!.Not(this.ctx!.Or(...constraint.variables.map((id) => getVar(id))))
-					: this.ctx!.Or(...constraint.variables.map((id) => getVar(id)));
-			optimize.addSoft(literal, constraint.weight, constraint.id);
-		});
-
-		const result = await optimize.check();
-		const satisfiable = result === 'sat';
-		if (!satisfiable) {
-			return { satisfiable: false, unsatCore: [] };
-		}
-
-		const model = optimize.model();
-		const assignment: Record<string, boolean> = {};
-		for (const [id, variable] of varMap.entries()) {
-			const evaluated = model.eval(variable, true);
-			assignment[id] = this.ctx.isTrue(evaluated);
-		}
-
-		return {
-			satisfiable: true,
-			assignment
-		};
 	}
 
 	async dispose() {

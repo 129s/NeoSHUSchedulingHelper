@@ -15,7 +15,7 @@ export interface AvailabilityResult {
 type CourseMetaLike = {
 	conflict?: 'none' | 'time-conflict' | 'hard-conflict';
 	conflictTargets?: string[];
-	diagnostics?: Array<{ label: 'conflic' | 'impossible' | 'weak-impossible'; reason?: string }>;
+	diagnostics?: Array<{ label: string; reason?: string }>;
 };
 
 function maxStatus(a: GroupStatus, b: GroupStatus): GroupStatus {

@@ -8,7 +8,7 @@ Define the visual + behavioral contract for `<CourseCard>` used in All/Selected/
 | color marker | primary column | schedule column | meta column | capacity ring |
 ```
 - **Color marker**: 4px stripe derived from course hash color, adjusted via shared utility to avoid collisions.
-- **Primary column**: course name (2-line clamp), subtext (teacher + id or campus).
+- **Primary column**: course name (2-line clamp), subtext (teacher name; never show teacher ID).
 - **Schedule column**: condensed text description of time/week pattern; if deduped with group header, render `—`.
 - **Meta column**: badges (cross-campus, bilingual, drafting) + action buttons.
 - **Capacity ring**: always visible in expanded state; hidden in collapsed rows.
@@ -42,9 +42,11 @@ Collapsed vs expanded:
 - Badge styling uses tokens `--app-color-badge-*`; compact variant reduces padding to `var(--app-space-1)`.
 
 ## Responsive Behavior
-- At widths < 420px, action buttons wrap under the meta column and align left.
-- At widths < 360px, meta column stacks below schedule column; ring floats right.
+- At widths < 560px, hide the label/value subcolumns (time/info) and render a compact meta-line under the title (time/courseCode/credit merged and allowed to wrap) to keep card height low; do not force card-level wrapping unless unavoidable.
+- At widths < 420px, clamp the title to 1 line and shrink ring/meta-column footprints (tighter padding/gaps). Actions may wrap when space is insufficient.
+- At widths < 360px, the ring degrades to an ultra-compact “pill” (number + semantic color only) and meta pills use the smallest typography.
 - Group headers reuse CourseCard layout but hide capacity ring (since sections show actual counts). Expanded sections render real CourseCard components.
+- In group-expanded section lists, the UI may apply an internal `density="dense"` presentation variant (equivalent to more aggressive responsive degradation) to reduce vertical height; this is not a user-facing “compact mode”.
 
 ## Calendar Hover Integration
 - Hover cards reuse CourseCard inner template with condensed layout. They inherit color markers and ring thresholds so list + calendar match.

@@ -58,7 +58,6 @@
 		subtitle={t('panels.actionLog.description')}
 		count={entries.length}
 		density="comfortable"
-		enableStickyToggle={true}
 	>
 		{#if message}
 			<div class={errorBannerClass}>{message}</div>
@@ -68,7 +67,7 @@
 			{#if entries.length === 0}
 				<p class="m-0 text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">{t('panels.actionLog.empty')}</p>
 			{:else}
-				{#each entries.slice().reverse() as entry, reverseIndex (entry.id)}
+				{#each entries.slice().reverse() as entry, reverseIndex (entries.length - 1 - reverseIndex)}
 					{@const index = entries.length - 1 - reverseIndex}
 					{@const isCurrent = index === cursor}
 					{@const isRedo = index > cursor}

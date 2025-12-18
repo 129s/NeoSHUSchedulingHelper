@@ -26,7 +26,13 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<JwxtApi
 			...init,
 			headers: init?.headers ?? {}
 		});
-		return await readJson<JwxtApiResponse<T>>(response);
+		const text = await response.text();
+		if (!text) return { ok: false, error: `HTTP_${response.status}` };
+		try {
+			return JSON.parse(text) as JwxtApiResponse<T>;
+		} catch {
+			return { ok: false, error: `HTTP_${response.status}` };
+		}
 	} catch (error) {
 		return {
 			ok: false,
@@ -36,7 +42,20 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<JwxtApi
 }
 
 export async function jwxtGetStatus(): Promise<JwxtApiResponse<JwxtStatus>> {
-	return requestJson<JwxtStatus>('/api/jwxt/status', { method: 'GET' });
+	try {
+		const response = await fetch('/api/jwxt/status', { method: 'GET' });
+		if (response.status === 404) {
+			return { ok: true, supported: false, loggedIn: false, message: 'BACKEND_MISSING' };
+		}
+		const text = await response.text();
+		if (!text) return { ok: false, error: `HTTP_${response.status}` };
+		return JSON.parse(text) as JwxtApiResponse<JwxtStatus>;
+	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error)
+		};
+	}
 }
 
 export async function jwxtPing(): Promise<
@@ -60,8 +79,57 @@ export async function jwxtLogin(payload: {
 	});
 }
 
+export async function jwxtImportCookie(payload: { userId?: string; cookie: string }): Promise<JwxtApiResponse<JwxtStatus>> {
+	return requestJson<JwxtStatus>('/api/jwxt/import-cookie', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+}
+
+export async function jwxtExportCookie(): Promise<JwxtApiResponse<{ cookie: string }>> {
+	return requestJson<{ cookie: string }>('/api/jwxt/export-cookie', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({})
+	});
+}
+
 export async function jwxtLogout(): Promise<JwxtApiResponse<JwxtStatus>> {
 	return requestJson<JwxtStatus>('/api/jwxt/logout', { method: 'POST', headers: { 'content-type': 'application/json' } });
+}
+
+export type JwxtRoundInfo = {
+	xkkzId: string;
+	xklc?: string;
+	xklcmc?: string;
+	kklxdm: string;
+	kklxLabel: string;
+	active: boolean;
+};
+
+export type JwxtRoundsPayload = {
+	term: {
+		xkxnm?: string;
+		xkxqm?: string;
+		xkxnmc?: string;
+		xkxqmc?: string;
+	};
+	selectedXkkzId?: string | null;
+	activeXkkzId?: string | null;
+	rounds: JwxtRoundInfo[];
+};
+
+export async function jwxtGetRounds(): Promise<JwxtApiResponse<JwxtRoundsPayload>> {
+	return requestJson<JwxtRoundsPayload>('/api/jwxt/rounds', { method: 'GET' });
+}
+
+export async function jwxtSelectRound(payload: { xkkzId: string }): Promise<JwxtApiResponse<{ selectedXkkzId: string }>> {
+	return requestJson<{ selectedXkkzId: string }>('/api/jwxt/select-round', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
 }
 
 export type JwxtSelectedPair = { kchId: string; jxbId: string };
@@ -144,6 +212,19 @@ export async function jwxtEnroll(payload: { kchId: string; jxbId: string }): Pro
 
 export async function jwxtDrop(payload: { kchId: string; jxbId: string }): Promise<JwxtApiResponse<{ message?: string }>> {
 	return requestJson('/api/jwxt/drop', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+}
+
+export async function jwxtCrawlSnapshot(payload: { termId?: string; limitCourses?: number } = {}): Promise<
+	JwxtApiResponse<{
+		termId: string;
+		snapshot: unknown;
+	}>
+> {
+	return requestJson('/api/jwxt/crawl-snapshot', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(payload)

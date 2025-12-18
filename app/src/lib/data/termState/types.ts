@@ -9,6 +9,7 @@ export type EpochMs = Brand<number, 'EpochMs'>;
 import type { DesiredLock, SoftConstraint } from '../desired/types';
 import type { TimeTemplate } from '../solver/timeTemplates';
 import type { SolverResultRecord } from '../solver/resultTypes';
+import type { ManualUpdate } from '../manualUpdates';
 
 export type JwxtPair = { kchId: string; jxbId: string };
 
@@ -97,11 +98,39 @@ export interface TermState {
 			selected: 'sectionOnly';
 			jwxt: 'sectionOnly';
 		};
+		homeCampus: string;
+		selectionMode: 'allowOverflowMode' | 'overflowSpeedRaceMode' | null;
+		autoSolveEnabled: boolean;
+		autoSolveBackup:
+			| {
+					at: EpochMs;
+					selection: {
+						selected: EntryId[];
+						wishlistSections: EntryId[];
+						wishlistGroups: GroupKey[];
+						selectedSig: Md5;
+					};
+					solver: { staging: TermState['solver']['staging'] };
+					ui: { collapseCoursesByName: boolean };
+			  }
+			| null;
+		autoSolveTimeSoft: {
+			avoidEarlyWeight: number;
+			avoidLateWeight: number;
+		};
 		courseListPolicy:
 			| 'ONLY_OK_NO_RESCHEDULE'
 			| 'ALLOW_OK_WITH_RESELECT'
 			| 'DIAGNOSTIC_SHOW_IMPOSSIBLE'
 			| 'NO_CHECK';
+		pagination: {
+			mode: 'paged' | 'continuous';
+			pageSize: number;
+			pageNeighbors: number;
+		};
+		calendar: {
+			showWeekends: boolean;
+		};
 		jwxt: {
 			autoSyncEnabled: boolean;
 			autoSyncIntervalSec: number;
@@ -121,7 +150,12 @@ export interface ActionEntryV1 {
 
 export type TermAction =
 	| { type: 'SEL_PROMOTE_SECTION'; entryId: EntryId; to: 'wishlist' | 'selected' }
+	| { type: 'SEL_PROMOTE_SECTION_MANY'; entryIds: EntryId[]; to: 'wishlist' }
 	| { type: 'SEL_DEMOTE_SECTION'; entryId: EntryId; to: 'wishlist' | 'all' }
+	| { type: 'SEL_DEMOTE_SECTION_MANY'; entryIds: EntryId[]; to: 'wishlist' }
+	| { type: 'SEL_DROP_SELECTED_SECTION'; entryId: EntryId }
+	| { type: 'SEL_UNWISHLIST_SECTION'; entryId: EntryId }
+	| { type: 'SEL_UNWISHLIST_SECTION_MANY'; entryIds: EntryId[] }
 	| { type: 'SEL_PROMOTE_GROUP'; groupKey: GroupKey; to: 'wishlist' | 'selected' }
 	| { type: 'SEL_DEMOTE_GROUP'; groupKey: GroupKey; to: 'all' }
 	| { type: 'SEL_CLEAR_WISHLIST' }
@@ -147,12 +181,33 @@ export type TermAction =
 	| { type: 'JWXT_FROZEN_ACK_RESUME' }
 	| { type: 'HIST_TOGGLE_TO_INDEX'; index: number }
 	| { type: 'SETTINGS_UPDATE'; patch: Partial<TermState['settings']> }
+	| {
+			type: 'AUTO_SOLVE_ENTRY_FILTER_APPLY';
+			runId: string;
+			keepGroupKeys: GroupKey[];
+			dropGroupKeys: GroupKey[];
+	  }
+	| { type: 'AUTO_SOLVE_RUN'; mode?: 'merge' | 'replace-all' }
+	| { type: 'AUTO_SOLVE_APPLY'; plan: ManualUpdate[]; mode: 'merge' | 'replace-all'; runId: string; metrics?: unknown }
+	| { type: 'AUTO_SOLVE_ERR'; error: string; runId: string }
+	| { type: 'AUTO_SOLVE_EXIT_KEEP' }
+	| { type: 'AUTO_SOLVE_EXIT_RESTORE' }
+	| { type: 'AUTO_SOLVE_EXIT_EXPORT'; mode?: 'merge' | 'replace-all' }
 	| { type: 'SOLVER_ADD_LOCK'; lock: DesiredLock }
 	| { type: 'SOLVER_REMOVE_LOCK'; id: string }
+	| { type: 'SOLVER_REMOVE_LOCK_MANY'; ids: string[] }
 	| { type: 'SOLVER_UPDATE_LOCK'; id: string; patch: Partial<DesiredLock> }
 	| { type: 'SOLVER_ADD_SOFT'; constraint: SoftConstraint }
 	| { type: 'SOLVER_REMOVE_SOFT'; id: string }
+	| { type: 'SOLVER_REMOVE_SOFT_MANY'; ids: string[] }
 	| { type: 'SOLVER_UPDATE_SOFT'; id: string; patch: Partial<SoftConstraint> }
+	| { type: 'SOLVER_STAGING_ADD'; item: { kind: 'group'; key: GroupKey } | { kind: 'section'; key: EntryId } }
+	| {
+			type: 'SOLVER_STAGING_ADD_MANY';
+			items: Array<{ kind: 'group'; key: GroupKey } | { kind: 'section'; key: EntryId }>;
+	  }
+	| { type: 'SOLVER_STAGING_REMOVE'; item: { kind: 'group'; key: GroupKey } | { kind: 'section'; key: EntryId } }
+	| { type: 'SOLVER_STAGING_CLEAR' }
 	| { type: 'SOLVER_RUN'; runType?: 'auto' | 'manual'; note?: string }
 	| { type: 'SOLVER_RUN_OK'; record: SolverResultRecord }
 	| { type: 'SOLVER_RUN_ERR'; error: string }
@@ -171,6 +226,9 @@ export type TermEffect =
 	| { type: 'EFF_JWXT_DROP'; pair: JwxtPair }
 	| { type: 'EFF_JWXT_ENROLL'; pair: JwxtPair }
 	| { type: 'EFF_SOLVER_RUN'; runType: 'auto' | 'manual'; note?: string }
+	| { type: 'EFF_AUTO_SOLVE_ENTRY_FILTER'; runId: string }
+	| { type: 'EFF_AUTO_SOLVE_RUN'; mode: 'merge' | 'replace-all'; runId: string }
+	| { type: 'EFF_AUTO_SOLVE_EXIT_EXPORT'; mode: 'merge' | 'replace-all'; runId: string }
 	| { type: 'EFF_DATASET_REFRESH' }
 	| { type: 'EFF_GIST_GET'; token: string; gistId: string }
 	| { type: 'EFF_GIST_PUT'; token: string; gistId?: string; note?: string; public?: boolean; payloadBase64: string };

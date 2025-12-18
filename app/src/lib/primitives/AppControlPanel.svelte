@@ -1,7 +1,10 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
+	import AppCard from './AppCard.svelte';
+
 	type Density = 'comfortable' | 'compact';
+	type CardPadding = 'sm' | 'md';
 
 	export let title: string | null = null;
 	export let description: string | null = null;
@@ -9,13 +12,12 @@
 	export let className = '';
 	export { className as class };
 
-	$: paddingClass = density === 'compact' ? 'p-2.5 gap-2.5' : 'p-3 gap-3';
+	let cardPadding: CardPadding = 'md';
+	$: cardPadding = density === 'compact' ? 'sm' : 'md';
+	$: gapClass = density === 'compact' ? 'gap-2.5' : 'gap-3';
 </script>
 
-<section
-	class={`flex flex-col rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] text-[var(--app-color-fg)] shadow-[var(--app-shadow-soft)] ${paddingClass} ${className}`.trim()}
-	{...$$restProps}
->
+<AppCard as="section" padding={cardPadding} class={`${gapClass} text-[var(--app-color-fg)] ${className}`.trim()} {...$$restProps}>
 	{#if title || description || $$slots['header-actions']}
 		<header class="flex flex-wrap items-start justify-between gap-2.5">
 			<div class="flex min-w-0 flex-col gap-1">
@@ -45,4 +47,4 @@
 			<slot name="footer" />
 		</footer>
 	{/if}
-</section>
+</AppCard>

@@ -1,0 +1,25 @@
+{
+	"name": "SHU Course Scheduler",
+	"short_name": "Scheduler",
+	"start_url": "./",
+	"scope": "./",
+	"display": "standalone",
+	"background_color": "#0b1220",
+	"theme_color": "#3556c4",
+	"description": "SHU JWXT course scheduling assistant.",
+	"icons": [
+		{
+			"src": "icons/app-icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		},
+		{
+			"src": "icons/app-icon-maskable.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "maskable"
+		}
+	]
+}
+

@@ -1,0 +1,27 @@
+:root[data-theme='fluent'] {
+  /* Bridge Fluent design tokens into the app's base token layer (used by app/tokens/_base.css). */
+  --token-font-family-base: var(--body-font, "Segoe UI Variable", "Segoe UI", sans-serif);
+  --token-font-label-small-size: var(--type-ramp-minus-1-font-size, 12px);
+  --token-font-body-medium-size: var(--type-ramp-base-font-size, 14px);
+  --token-font-body-large-size: var(--type-ramp-plus-1-font-size, 16px);
+  --token-font-title-medium-size: var(--type-ramp-plus-2-font-size, 20px);
+
+  --token-space-1: calc(var(--design-unit, 4) * 1px);
+  --token-space-2: calc(var(--design-unit, 4) * 2px);
+  --token-space-3: calc(var(--design-unit, 4) * 3px);
+  --token-space-4: calc(var(--design-unit, 4) * 4px);
+  --token-space-5: calc(var(--design-unit, 4) * 5px);
+  --token-space-6: calc(var(--design-unit, 4) * 6px);
+  --token-space-8: calc(var(--design-unit, 4) * 8px);
+
+  --token-radius-xs: calc(var(--control-corner-radius, 4) * 0.5px);
+  --token-radius-sm: calc(var(--control-corner-radius, 4) * 1px);
+  --token-radius-md: calc(var(--control-corner-radius, 4) * 1px);
+  --token-radius-lg: calc(var(--layer-corner-radius, 8) * 1px);
+  --token-radius-xl: calc(var(--layer-corner-radius, 8) * 1px);
+
+  --token-elevation-0: none;
+  --token-elevation-1: var(--elevation-shadow-card-rest, 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14));
+  --token-elevation-2: var(--elevation-shadow-card-hover, 0 0 2px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.14));
+  --token-elevation-3: var(--elevation-shadow-flyout, 0 0 2px rgba(0, 0, 0, 0.2), 0 16px 32px rgba(0, 0, 0, 0.24));
+}

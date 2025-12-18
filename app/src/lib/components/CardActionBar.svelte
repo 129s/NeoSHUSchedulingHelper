@@ -5,6 +5,6 @@
 	export { className as class };
 </script>
 
-<div class={`flex flex-wrap items-center gap-2 justify-end ${className}`.trim()}>
-	<slot />
-</div>
+	<div class={`flex flex-wrap items-center gap-x-2 gap-y-1 justify-end ${className}`.trim()}>
+		<slot />
+	</div>

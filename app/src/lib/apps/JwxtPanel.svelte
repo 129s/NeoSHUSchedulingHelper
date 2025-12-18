@@ -3,52 +3,93 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onDestroy, onMount } from 'svelte';
-	import { get } from 'svelte/store';
+	import { get, type Writable } from 'svelte/store';
 	import DockPanelShell from '$lib/components/DockPanelShell.svelte';
 	import ListSurface from '$lib/components/ListSurface.svelte';
+	import ContinuousPager from '$lib/components/ContinuousPager.svelte';
+	import AsyncTaskProgress from '$lib/components/AsyncTaskProgress.svelte';
+	import CourseFiltersToolbar from '$lib/components/CourseFiltersToolbar.svelte';
 	import CourseCard from '$lib/components/CourseCard.svelte';
 	import CardActionBar from '$lib/components/CardActionBar.svelte';
+	import CardBulkCheckbox from '$lib/components/CardBulkCheckbox.svelte';
+	import CourseBulkBar from '$lib/components/CourseBulkBar.svelte';
 	import AppListCard from '$lib/components/AppListCard.svelte';
+	import JwxtRoundSelector from '$lib/components/JwxtRoundSelector.svelte';
 	import AppControlPanel from '$lib/primitives/AppControlPanel.svelte';
 	import AppControlRow from '$lib/primitives/AppControlRow.svelte';
 	import AppField from '$lib/primitives/AppField.svelte';
 	import AppButton from '$lib/primitives/AppButton.svelte';
 	import AppDialog from '$lib/primitives/AppDialog.svelte';
+	import AppPagination from '$lib/primitives/AppPagination.svelte';
+	import AppTextArea from '$lib/primitives/AppTextArea.svelte';
 	import { translator, type TranslateFn } from '$lib/i18n';
 	import {
 		jwxtAutoPushMuteUntil,
 		jwxtRememberedUserId
 	} from '$lib/stores/jwxt';
+	import {
+		clearJwxtCookieDeviceVault,
+		hasStoredJwxtCookieDeviceVault,
+		loadJwxtCookieFromDeviceVault,
+		saveJwxtCookieToDeviceVault
+	} from '$lib/stores/jwxtCookieDeviceVault';
+	import {
+		clearJwxtCookieVault,
+		hasStoredJwxtCookieVault,
+		loadJwxtCookieFromVault,
+		saveJwxtCookieToVault
+	} from '$lib/stores/jwxtCookieVault';
 	import { activateHover, clearHover } from '$lib/stores/courseHover';
 	import {
-		addToWishlist,
 		deselectCourse,
-		removeFromWishlist,
-		selectCourse,
 		selectedCourseIds,
 		wishlistCourseIds
 	} from '$lib/stores/courseSelection';
 	import { courseCatalog, courseCatalogMap, type CourseCatalogEntry } from '$lib/data/catalog/courseCatalog';
+	import type { WeekDescriptor } from '$lib/data/InsaneCourseData';
 	import { selectedEntryIds, termState, dispatchTermAction, ensureTermStateLoaded } from '$lib/stores/termStateStore';
+	import { createCourseFilterStore, filterOptions, type CourseFilterState } from '$lib/stores/courseFilters';
+	import { applyCourseFilters } from '$lib/utils/courseFilterEngine';
+	import { paginationMode, pageNeighbors, pageSize } from '$lib/stores/paginationSettings';
+	import { deriveGroupKey } from '$lib/data/termState/groupKey';
 	import {
-		jwxtDrop,
 		jwxtGetStatus,
+		jwxtGetRounds,
 		jwxtPing,
 		jwxtLogin,
+		jwxtImportCookie,
+		jwxtExportCookie,
+		jwxtSelectRound,
 		jwxtLogout,
-		jwxtSearch,
 		type JwxtStatus,
+		type JwxtRoundInfo,
 		type JwxtSelectedPair
 	} from '$lib/data/jwxt/jwxtApi';
+	import { getDatasetConfig } from '../../config/dataset';
+	import { jwxtCrawlState, startJwxtCrawl } from '$lib/stores/jwxtCrawlTask';
+	import { activateRoundSnapshot, fetchCloudRoundIndex, hasRoundSnapshot } from '$lib/data/catalog/cloudSnapshot';
 
 	let t: TranslateFn = (key) => key;
 	$: t = $translator;
+
+	const datasetTermId = getDatasetConfig().termId;
 
 	let status: JwxtStatus | null = null;
 	let statusMessage = '';
 
 	let userId = '';
 	let password = '';
+	let loginMethod: 'password' | 'cookie' = 'password';
+	let cookieHeader = '';
+
+	let persistMode: 'none' | 'device' | 'vault' = 'device';
+	let vaultPassword = '';
+	let vaultPasswordConfirm = '';
+	let vaultUnlockPassword = '';
+	let autoLoginAttempted = false;
+	let autoLoginBusy = false;
+	let cookieHasDeviceVault = false;
+	let cookieHasPasswordVault = false;
 
 	let loginBusy = false;
 	let syncBusy = false;
@@ -60,24 +101,60 @@
 	let pendingTtlMs: 0 | 120000 = 0;
 	let lastRemoteDirtyDigest: string | null = null;
 
+	let roundBusy = false;
+	let roundStatus = '';
+	let roundCloudStatus = '';
+	let roundTermLabel = '';
+	let availableRounds: JwxtRoundInfo[] = [];
+	let selectedXkkzId = '';
+	let crawlStageText = '';
+	let crawlStatusText = '';
+
+	$: crawlStageText = formatCrawlStage($jwxtCrawlState.stage);
+	$: crawlStatusText =
+		$jwxtCrawlState.message ||
+		crawlStageText ||
+		($jwxtCrawlState.running ? t('panels.jwxt.statuses.crawling') : '');
+
 	let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 	let nowTick = Date.now();
 	let autoSyncEnabled = false;
 	let autoSyncIntervalSec = 120;
 	let autoPushEnabled = false;
 
-	let searchQuery = '';
-	let searchBusy = false;
-	let searchStatus = '';
-	let searchResults: Array<{
-		kchId: string;
-		courseName: string;
-		jxbId: string;
-		teacher: string;
-		time: string;
-		credit: string;
-	}> = [];
 	let remoteSelected: JwxtSelectedPair[] = [];
+	let remoteSelectedKeySet = new Set<string>();
+	let enrollSelectedSchedule: Array<{
+		courseId: string;
+		day: number;
+		startPeriod: number;
+		endPeriod: number;
+		weeks?: WeekDescriptor;
+	}> = [];
+	let scrollRoot: HTMLElement | null = null;
+
+	const enrollFiltersBase = createCourseFilterStore({ statusMode: 'all:no-status', conflictMode: 'time' });
+	const enrollFilters: Writable<CourseFilterState> = {
+		subscribe: enrollFiltersBase.subscribe,
+		set: (value) => enrollFiltersBase.set({ ...value, conflictMode: 'time' }),
+		update: (fn) =>
+			enrollFiltersBase.update((current) => ({
+				...fn(current),
+				conflictMode: 'time'
+			}))
+	};
+	const enrollBaseCourses = courseCatalog.filter((entry) => Boolean(entry.courseCode && entry.sectionId));
+	let enrollCurrentPage = 1;
+	let enrollTotalPages = 1;
+	let enrollContinuousActivePage = 1;
+	let enrollLastMode: 'paged' | 'continuous' | null = null;
+	let enrollContentSignature = '';
+
+	let enrollBulkSelection = new Set<string>();
+	let enrollBulkBusy = false;
+
+	let dropBulkSelection = new Set<string>();
+	let dropBulkBusy = false;
 
 	let confirmOpen = false;
 	let confirmTitle = '';
@@ -97,6 +174,12 @@
 	$: autoSyncEnabled = $termState?.settings.jwxt.autoSyncEnabled ?? false;
 	$: autoSyncIntervalSec = $termState?.settings.jwxt.autoSyncIntervalSec ?? 120;
 	$: autoPushEnabled = $termState?.settings.jwxt.autoPushEnabled ?? false;
+	$: cookieHasDeviceVault = hasStoredJwxtCookieDeviceVault();
+	$: cookieHasPasswordVault = hasStoredJwxtCookieVault();
+	$: if (browser) {
+		if (persistMode === 'device' && !cookieHasDeviceVault && cookieHasPasswordVault) persistMode = 'vault';
+		if (persistMode === 'vault' && !cookieHasPasswordVault && cookieHasDeviceVault) persistMode = 'device';
+	}
 
 	const format = (key: string, values?: Record<string, string | number>) => {
 		let template = t(key);
@@ -163,12 +246,263 @@
 		return error instanceof Error ? error.message : String(error);
 	}
 
+	function formatRoundOption(round: JwxtRoundInfo) {
+		const parts: string[] = [];
+		if (round.xklcmc) parts.push(round.xklcmc);
+		else if (round.xklc) parts.push(t('panels.jwxt.rounds.roundIndex', { count: round.xklc }));
+		if (round.kklxLabel) parts.push(round.kklxLabel);
+		return parts.join(' · ') || round.xkkzId;
+	}
+
+	function formatCrawlStage(stage: string | null): string {
+		if (!stage) return '';
+		return t(`common.crawlStages.${stage}`);
+	}
+
 	async function updateJwxtSettings(patch: Partial<NonNullable<typeof $termState>['settings']['jwxt']>) {
 		if (!$termState) return;
 		const next = { ...$termState.settings.jwxt, ...patch };
 		const result = await dispatchTermAction({ type: 'SETTINGS_UPDATE', patch: { jwxt: next } });
 		if (!result.ok) {
 			statusMessage = result.error.message;
+		}
+	}
+
+	async function refreshRounds() {
+		if (!browser) return;
+		if (!status?.loggedIn) return;
+		roundBusy = true;
+		try {
+			roundStatus = t('panels.jwxt.rounds.loading');
+			roundCloudStatus = '';
+			const res = await jwxtGetRounds();
+			if (!res.ok) {
+				availableRounds = [];
+				roundTermLabel = '';
+				selectedXkkzId = '';
+				roundStatus = res.error;
+				return;
+			}
+			availableRounds = res.rounds ?? [];
+			const termParts = [res.term?.xkxnmc, res.term?.xkxqmc].filter(Boolean) as string[];
+			roundTermLabel = termParts.join(' ') || '';
+			const desired = (res.selectedXkkzId ?? res.activeXkkzId ?? '').trim();
+			if (desired) selectedXkkzId = desired;
+			else if (!selectedXkkzId && availableRounds.length) selectedXkkzId = availableRounds[0].xkkzId;
+			roundStatus = '';
+			void compareCloudRounds(res.rounds ?? []);
+		} catch (error) {
+			roundStatus = renderApiError(error);
+		} finally {
+			roundBusy = false;
+		}
+	}
+
+	async function compareCloudRounds(rounds: JwxtRoundInfo[]) {
+		if (!browser) return;
+		if (!rounds.length) return;
+		roundCloudStatus = t('panels.jwxt.rounds.cloudCompareLoading');
+		const cloud = await fetchCloudRoundIndex(datasetTermId);
+		if (!cloud.ok) {
+			roundCloudStatus = t('panels.jwxt.rounds.cloudCompareFailed', { error: cloud.error });
+			return;
+		}
+		const cloudByLc = new Map(cloud.rounds.map((r) => [r.xklc, r]));
+		const important = rounds.filter((r) => r.xklc === '1' || r.xklc === '2');
+		const targets = important.length ? important : rounds.slice(0, 2);
+		const missing: string[] = [];
+		const mismatched: string[] = [];
+		for (const r of targets) {
+			if (!r.xklc) continue;
+			const cloudRound = cloudByLc.get(r.xklc);
+			if (!cloudRound) missing.push(r.xklc);
+			else if (cloudRound.xkkzId && cloudRound.xkkzId !== r.xkkzId) mismatched.push(r.xklc);
+		}
+		if (!missing.length && !mismatched.length) {
+			roundCloudStatus = t('panels.jwxt.rounds.cloudCompareOk');
+			return;
+		}
+		roundCloudStatus = t('panels.jwxt.rounds.cloudCompareMismatch', {
+			missing: missing.join(','),
+			mismatched: mismatched.join(',')
+		});
+	}
+
+	async function handleSelectRound(next: string) {
+		if (!browser) return;
+		if (!next || next === selectedXkkzId) return;
+		selectedXkkzId = next;
+		roundBusy = true;
+		try {
+			roundStatus = '';
+			const res = await jwxtSelectRound({ xkkzId: next });
+			if (!res.ok) {
+				roundStatus = res.error;
+				return;
+			}
+			selectedXkkzId = res.selectedXkkzId || next;
+			const label = formatRoundOption(
+				availableRounds.find((r) => r.xkkzId === selectedXkkzId) ?? {
+					xkkzId: selectedXkkzId,
+					kklxdm: '',
+					kklxLabel: '',
+					active: false
+				}
+			);
+			setStatusMessage('panels.jwxt.statuses.roundSelected', { round: label });
+			if (hasRoundSnapshot(datasetTermId, selectedXkkzId)) {
+				const activated = activateRoundSnapshot(datasetTermId, selectedXkkzId);
+				if (activated.ok) setStatusMessage('panels.jwxt.statuses.roundSnapshotActivated', { round: label });
+			}
+			void handleSync({ silent: true });
+		} catch (error) {
+			roundStatus = renderApiError(error);
+		} finally {
+			roundBusy = false;
+		}
+	}
+
+	async function handleCrawlData() {
+		if (!browser) return;
+		try {
+			setStatusMessage('panels.jwxt.statuses.crawling');
+			const res = await startJwxtCrawl(datasetTermId);
+			if (!res.ok) {
+				setStatusMessage('panels.jwxt.statuses.crawlFailed', { error: res.error });
+				return;
+			}
+			setStatusMessage('panels.jwxt.statuses.crawlSuccess');
+		} finally {
+			// progress state is tracked via jwxtCrawlState
+		}
+	}
+
+	async function persistCurrentSession() {
+		if (!browser) return;
+		if (persistMode === 'none') return;
+		const exported = await jwxtExportCookie();
+		if (!exported.ok) throw new Error(exported.error);
+
+		if (persistMode === 'device') {
+			await saveJwxtCookieToDeviceVault(exported.cookie);
+			return;
+		}
+
+		if (!vaultPassword || vaultPassword.length < 6) {
+			throw new Error(t('panels.jwxt.statuses.vaultPasswordTooShort'));
+		}
+		if (vaultPassword !== vaultPasswordConfirm) {
+			throw new Error(t('panels.jwxt.statuses.vaultPasswordMismatch'));
+		}
+		await saveJwxtCookieToVault(exported.cookie, vaultPassword);
+	}
+
+	async function saveSessionNow() {
+		if (!browser) return;
+		loginBusy = true;
+		try {
+			await persistCurrentSession();
+			if (persistMode !== 'none') setStatusMessage('panels.jwxt.statuses.persistSaved');
+		} catch (error) {
+			setStatusMessage('panels.jwxt.statuses.persistFailed', { error: renderApiError(error) });
+		} finally {
+			loginBusy = false;
+		}
+	}
+
+	async function tryAutoLogin() {
+		if (!browser) return;
+		if (autoLoginAttempted) return;
+		autoLoginAttempted = true;
+		if (!hasStoredJwxtCookieDeviceVault()) return;
+		const uid = $jwxtRememberedUserId.trim();
+		if (!uid) return;
+		autoLoginBusy = true;
+		try {
+			setStatusMessage('panels.jwxt.statuses.autoLoginTrying');
+			let cookie = '';
+			try {
+				cookie = await loadJwxtCookieFromDeviceVault();
+			} catch (error) {
+				clearJwxtCookieDeviceVault();
+				throw error;
+			}
+			const imported = await jwxtImportCookie({ userId: uid, cookie });
+			if (!imported.ok) {
+				if (imported.error.includes('Cookie invalid')) clearJwxtCookieDeviceVault();
+				setStatusMessage('panels.jwxt.statuses.autoLoginFailed', { error: imported.error });
+				return;
+			}
+			status = imported;
+			if (status.loggedIn) {
+				setStatusMessage('panels.jwxt.statuses.autoLoginSuccess');
+				void refreshRounds();
+				void handleSync({ silent: true });
+			}
+		} catch (error) {
+			setStatusMessage('panels.jwxt.statuses.autoLoginFailed', { error: renderApiError(error) });
+		} finally {
+			autoLoginBusy = false;
+		}
+	}
+
+	async function unlockVaultAndImport() {
+		if (!browser) return;
+		if (!$jwxtRememberedUserId.trim()) {
+			setStatusMessage('panels.jwxt.statuses.missingUserId');
+			return;
+		}
+		if (!vaultUnlockPassword) {
+			setStatusMessage('panels.jwxt.statuses.missingVaultPassword');
+			return;
+		}
+		loginBusy = true;
+		try {
+			const cookie = await loadJwxtCookieFromVault(vaultUnlockPassword);
+			const imported = await jwxtImportCookie({ userId: $jwxtRememberedUserId.trim(), cookie });
+			if (!imported.ok) {
+				setStatusMessage('panels.jwxt.statuses.loginFailed', { error: imported.error });
+				return;
+			}
+			status = imported;
+			vaultUnlockPassword = '';
+			setStatusMessage('panels.jwxt.statuses.loginSuccess');
+			void refreshRounds();
+			void handleSync();
+		} catch (error) {
+			setStatusMessage('panels.jwxt.statuses.loginFailed', { error: renderApiError(error) });
+		} finally {
+			loginBusy = false;
+		}
+	}
+
+	async function importCookieHeader() {
+		if (!browser) return;
+		if (!$jwxtRememberedUserId.trim() || !cookieHeader.trim()) {
+			setStatusMessage('panels.jwxt.statuses.missingCookieCredentials');
+			return;
+		}
+		loginBusy = true;
+		try {
+			setStatusMessage('panels.jwxt.statuses.importingCookie');
+			const imported = await jwxtImportCookie({ userId: $jwxtRememberedUserId.trim(), cookie: cookieHeader.trim() });
+			if (!imported.ok) {
+				setStatusMessage('panels.jwxt.statuses.loginFailed', { error: imported.error });
+				return;
+			}
+			status = imported;
+			cookieHeader = '';
+			setStatusMessage('panels.jwxt.statuses.loginSuccess');
+			try {
+				await persistCurrentSession();
+				if (persistMode !== 'none') setStatusMessage('panels.jwxt.statuses.persistSaved');
+			} catch (error) {
+				setStatusMessage('panels.jwxt.statuses.persistFailed', { error: renderApiError(error) });
+			}
+			void refreshRounds();
+			void handleSync();
+		} finally {
+			loginBusy = false;
 		}
 	}
 
@@ -184,6 +518,205 @@
 				setStatusMessage('panels.jwxt.statuses.dropSuccess');
 			}
 		});
+	}
+
+	function confirmRemoteEnroll(entry: CourseCatalogEntry) {
+		if (!entry.courseCode || !entry.sectionId) return;
+		const meta = enrollFilterResult.meta.get(entry.id);
+		if (meta?.conflict === 'time-conflict') return;
+		const key = `${entry.courseCode}::${entry.sectionId}`;
+		if (remoteSelectedKeySet.has(key)) return;
+		requestConfirm({
+			title: t('panels.jwxt.confirm.enrollTitle'),
+			body: format('panels.jwxt.confirm.enrollBody', { course: describeCourse(entry) }),
+			confirmLabel: t('panels.jwxt.confirm.enrollConfirm'),
+			variant: 'danger',
+			action: async () => {
+				const result = await dispatchTermAction({
+					type: 'JWXT_ENROLL_NOW',
+					pair: { kchId: entry.courseCode, jxbId: entry.sectionId }
+				});
+				if (!result.ok) throw new Error(result.error.message);
+				setStatusMessage('panels.jwxt.statuses.enrollSuccess');
+				void handleSync({ silent: true });
+			}
+		});
+	}
+
+	function isEnrollEligible(entry: CourseCatalogEntry) {
+		if (!entry.courseCode || !entry.sectionId) return false;
+		const meta = enrollFilterResult.meta.get(entry.id);
+		if (meta?.conflict === 'time-conflict') return false;
+		return !remoteSelectedKeySet.has(`${entry.courseCode}::${entry.sectionId}`);
+	}
+
+	function enrollBulkToggle(entryId: string) {
+		const next = new Set(enrollBulkSelection);
+		if (next.has(entryId)) next.delete(entryId);
+		else next.add(entryId);
+		enrollBulkSelection = next;
+	}
+
+	function enrollBulkClear() {
+		enrollBulkSelection = new Set<string>();
+	}
+
+	function enrollBulkSelectVisible() {
+		const next = new Set(enrollBulkSelection);
+		for (const entry of enrollVisibleCourses) {
+			if (!isEnrollEligible(entry)) continue;
+			next.add(entry.id);
+		}
+		enrollBulkSelection = next;
+	}
+
+	function confirmBulkEnroll(entryIds: string[]) {
+		const selected = entryIds
+			.map((id) => courseCatalogMap.get(id))
+			.filter(Boolean) as CourseCatalogEntry[];
+
+		const eligible = selected.filter(isEnrollEligible);
+		const skipped = selected.length - eligible.length;
+
+		if (eligible.length === 0) {
+			setStatusMessage('panels.jwxt.statuses.bulkNothingToEnroll');
+			return;
+		}
+
+		const enrollList = limitList(eligible.map(describeCourse));
+		const sections: Array<{ title: string; items: string[] }> = [
+			{
+				title: t('panels.jwxt.confirm.bulkEnrollListTitle'),
+				items:
+					enrollList.more > 0
+						? [...enrollList.items, format('panels.jwxt.confirm.pushDiffMore', { count: enrollList.more })]
+						: enrollList.items
+			}
+		];
+		if (skipped > 0) {
+			sections.push({
+				title: t('panels.jwxt.confirm.bulkSkipTitle'),
+				items: [format('panels.jwxt.confirm.bulkSkipCount', { count: skipped })]
+			});
+		}
+
+		requestConfirm({
+			title: t('panels.jwxt.confirm.bulkEnrollTitle'),
+			body: format('panels.jwxt.confirm.bulkEnrollBody', { count: eligible.length, skipped }),
+			confirmLabel: t('panels.jwxt.confirm.bulkEnrollConfirm'),
+			variant: 'danger',
+			sections,
+			action: async () => {
+				enrollBulkBusy = true;
+				try {
+					for (const entry of eligible) {
+						const result = await dispatchTermAction({
+							type: 'JWXT_ENROLL_NOW',
+							pair: { kchId: entry.courseCode!, jxbId: entry.sectionId! }
+						});
+						if (!result.ok) throw new Error(result.error.message);
+					}
+					enrollBulkClear();
+					setStatusMessage('panels.jwxt.statuses.bulkEnrollSuccess', { count: eligible.length });
+					void handleSync({ silent: true });
+				} finally {
+					enrollBulkBusy = false;
+				}
+			}
+		});
+	}
+
+	function dropBulkToggle(key: string) {
+		const next = new Set(dropBulkSelection);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		dropBulkSelection = next;
+	}
+
+	function dropBulkClear() {
+		dropBulkSelection = new Set<string>();
+	}
+
+	function dropBulkSelectAll() {
+		dropBulkSelection = new Set(remoteSelected.map((pair) => `${pair.kchId}::${pair.jxbId}`));
+	}
+
+	function confirmBulkDrop(keys: string[]) {
+		const keySet = new Set(keys);
+		const selectedPairs = remoteSelected.filter((pair) => keySet.has(`${pair.kchId}::${pair.jxbId}`));
+		if (selectedPairs.length === 0) {
+			setStatusMessage('panels.jwxt.statuses.bulkNothingToDrop');
+			return;
+		}
+
+		const labels = selectedPairs.map((pair) => {
+			const localId = mapRemotePairToLocalId(pair);
+			const entry = localId ? courseCatalogMap.get(localId) : null;
+			return entry ? describeCourse(entry) : `${pair.kchId} (${pair.jxbId})`;
+		});
+		const dropList = limitList(labels);
+
+		requestConfirm({
+			title: t('panels.jwxt.confirm.bulkDropTitle'),
+			body: format('panels.jwxt.confirm.bulkDropBody', { count: selectedPairs.length }),
+			confirmLabel: t('panels.jwxt.confirm.bulkDropConfirm'),
+			variant: 'danger',
+			sections: [
+				{
+					title: t('panels.jwxt.confirm.bulkDropListTitle'),
+					items:
+						dropList.more > 0
+							? [...dropList.items, format('panels.jwxt.confirm.pushDiffMore', { count: dropList.more })]
+							: dropList.items
+				}
+			],
+			action: async () => {
+				dropBulkBusy = true;
+				try {
+					for (const pair of selectedPairs) {
+						const result = await dispatchTermAction({ type: 'JWXT_DROP_NOW', pair: { kchId: pair.kchId, jxbId: pair.jxbId } });
+						if (!result.ok) throw new Error(result.error.message);
+					}
+					dropBulkClear();
+					setStatusMessage('panels.jwxt.statuses.bulkDropSuccess', { count: selectedPairs.length });
+					void handleSync({ silent: true });
+				} finally {
+					dropBulkBusy = false;
+				}
+			}
+		});
+	}
+
+	async function copyRemoteToWishlist(entry: CourseCatalogEntry) {
+		const state = get(termState);
+		if (!state) return;
+
+		const granularity = state.settings.granularity.candidates ?? 'groupPreferred';
+		const groupKey = deriveGroupKey(entry);
+		const action =
+			granularity === 'groupPreferred'
+				? { type: 'SEL_PROMOTE_GROUP', groupKey: groupKey as any, to: 'wishlist' }
+				: { type: 'SEL_PROMOTE_SECTION', entryId: entry.id as any, to: 'wishlist' };
+
+		const result = await dispatchTermAction(action as any);
+		if (!result.ok && result.error.kind === 'DUPLICATE_SELECTED_GROUP') {
+			const fallback = await dispatchTermAction({
+				type: 'SEL_PROMOTE_GROUP',
+				groupKey: groupKey as any,
+				to: 'wishlist'
+			});
+			if (!fallback.ok) {
+				statusMessage = fallback.error.message;
+				return;
+			}
+			setStatusMessage('panels.jwxt.statuses.copyToWishlistSuccess');
+			return;
+		}
+		if (!result.ok) {
+			statusMessage = result.error.message;
+			return;
+		}
+		setStatusMessage('panels.jwxt.statuses.copyToWishlistSuccess');
 	}
 
 	async function refreshStatus() {
@@ -203,6 +736,14 @@
 			return;
 		}
 		setStatusMessage(response.loggedIn ? 'panels.jwxt.statuses.loggedIn' : 'panels.jwxt.statuses.loggedOut');
+		if (response.loggedIn) {
+			void refreshRounds();
+		} else {
+			availableRounds = [];
+			roundTermLabel = '';
+			selectedXkkzId = '';
+			roundStatus = '';
+		}
 	}
 
 	async function handlePing() {
@@ -221,7 +762,7 @@
 
 	onMount(() => {
 		void ensureTermStateLoaded();
-		void refreshStatus();
+		void refreshStatus().then(() => void tryAutoLogin());
 		if (!browser) return;
 		const nowTimer = setInterval(() => (nowTick = Date.now()), 1000);
 		return () => clearInterval(nowTimer);
@@ -274,6 +815,13 @@
 			status = response;
 			password = '';
 			setStatusMessage('panels.jwxt.statuses.loginSuccess');
+			try {
+				await persistCurrentSession();
+				if (persistMode !== 'none') setStatusMessage('panels.jwxt.statuses.persistSaved');
+			} catch (error) {
+				setStatusMessage('panels.jwxt.statuses.persistFailed', { error: renderApiError(error) });
+			}
+			void refreshRounds();
 			void handleSync();
 		} finally {
 			loginBusy = false;
@@ -449,37 +997,22 @@
 		setStatusMessage('panels.jwxt.statuses.pushing');
 	}
 
-	async function handleSearch() {
-		if (!status?.supported) {
-			searchStatus = t('panels.jwxt.statuses.backendMissing');
-			return;
-		}
-		if (!status.loggedIn) {
-			searchStatus = t('panels.jwxt.statuses.requireLogin');
-			return;
-		}
-		if (!searchQuery.trim()) {
-			searchStatus = t('panels.jwxt.statuses.searchEmpty');
-			return;
-		}
-		try {
-			searchBusy = true;
-			searchStatus = t('panels.jwxt.statuses.searching');
-			const response = await jwxtSearch({ query: searchQuery.trim() });
-			if (!response.ok) {
-				searchStatus = t('panels.jwxt.statuses.searchFailed', { error: response.error });
-				return;
-			}
-			searchResults = response.results;
-			searchStatus = format('panels.jwxt.statuses.searchSuccess', { count: response.results.length });
-		} finally {
-			searchBusy = false;
-		}
-	}
-
 	$: {
 		const snapshot = $termState;
 		remoteSelected = (snapshot?.jwxt.remoteSnapshot?.pairs ?? []) as JwxtSelectedPair[];
+		remoteSelectedKeySet = new Set(remoteSelected.map((pair) => `${pair.kchId}::${pair.jxbId}`));
+		const scheduleIds = new Set<string>([...$selectedCourseIds, ...mapRemotePairsToLocalIds(remoteSelected)]);
+		enrollSelectedSchedule = Array.from(scheduleIds).flatMap((id) => {
+			const entry = courseCatalogMap.get(id);
+			if (!entry) return [];
+			return entry.timeChunks.map((chunk) => ({
+				courseId: id,
+				day: chunk.day,
+				startPeriod: chunk.startPeriod,
+				endPeriod: chunk.endPeriod,
+				weeks: chunk.weeks
+			}));
+		});
 		const digest = snapshot?.jwxt.remoteSnapshot?.digest ?? null;
 		if (snapshot?.jwxt.syncState === 'REMOTE_DIRTY' && digest && digest !== lastRemoteDirtyDigest) {
 			lastRemoteDirtyDigest = digest;
@@ -515,10 +1048,68 @@
 			});
 		}
 	}
+
+	$: enrollPageSizeValue = Math.max(1, $pageSize || 1);
+	$: enrollEffectiveFilterState = $enrollFiltersBase;
+	$: enrollFilterResult = applyCourseFilters(enrollBaseCourses, enrollEffectiveFilterState, {
+		selectedIds: $selectedCourseIds,
+		wishlistIds: $wishlistCourseIds,
+		selectedSchedule: enrollSelectedSchedule,
+	});
+	$: enrollCourses = enrollFilterResult.items;
+	$: enrollTotalItems = enrollCourses.length;
+	$: enrollTotalPages = Math.max(1, Math.ceil(Math.max(1, enrollTotalItems) / enrollPageSizeValue));
+	$: showEnrollPaginationFooter = $paginationMode === 'paged' && enrollTotalPages > 1;
+	$: enrollBulkSelectLabel =
+		$paginationMode === 'paged' && enrollTotalPages > 1
+			? t('panels.jwxt.bulk.selectVisible')
+			: t('panels.jwxt.bulk.selectEligible');
+
+	$: {
+		const sig = `${enrollTotalItems}`;
+		if (sig !== enrollContentSignature) {
+			enrollContentSignature = sig;
+			enrollCurrentPage = 1;
+			enrollContinuousActivePage = 1;
+		}
+	}
+
+	$: if ($paginationMode !== enrollLastMode) {
+		if ($paginationMode === 'continuous')
+			enrollContinuousActivePage = Math.max(1, Math.min(enrollTotalPages, enrollCurrentPage));
+		else enrollCurrentPage = Math.max(1, Math.min(enrollTotalPages, enrollContinuousActivePage));
+		enrollLastMode = $paginationMode;
+	}
+
+	$: enrollCurrentPage = Math.min(enrollCurrentPage, enrollTotalPages);
+	$: enrollContinuousActivePage = Math.max(1, Math.min(enrollTotalPages, enrollContinuousActivePage));
+	$: enrollEffectiveNeighbors = Math.max(0, Math.floor($pageNeighbors ?? 0));
+	$: enrollWindowPageMin =
+		$paginationMode === 'paged' ? enrollCurrentPage : Math.max(1, enrollContinuousActivePage - enrollEffectiveNeighbors);
+	$: enrollWindowPageMax =
+		$paginationMode === 'paged'
+			? enrollCurrentPage
+			: Math.min(enrollTotalPages, enrollContinuousActivePage + enrollEffectiveNeighbors);
+	$: enrollWindowStartIndex = (enrollWindowPageMin - 1) * enrollPageSizeValue;
+	$: enrollWindowEndIndex = Math.min(enrollTotalItems, enrollWindowPageMax * enrollPageSizeValue);
+	$: enrollVisibleCourses =
+		enrollCourses.slice(
+			enrollWindowStartIndex,
+			$paginationMode === 'paged' ? enrollWindowStartIndex + enrollPageSizeValue : enrollWindowEndIndex
+		);
+
+	function handleEnrollPageChange(page: number) {
+		enrollCurrentPage = Math.max(1, Math.min(enrollTotalPages, page));
+	}
 </script>
 
 <DockPanelShell class="flex-1 min-h-0">
-	<ListSurface title={t('panels.jwxt.title')} subtitle={t('panels.jwxt.subtitle')} density="comfortable">
+	<ListSurface
+		title={t('panels.jwxt.title')}
+		subtitle={t('panels.jwxt.subtitle')}
+		density="comfortable"
+		bind:scrollRoot
+	>
 		<div class="flex flex-wrap items-start gap-5 min-w-0">
 			<AppControlPanel
 				title={t('panels.jwxt.connectionTitle')}
@@ -552,25 +1143,221 @@
 						</div>
 					</div>
 
+					{#if status?.loggedIn}
+						<JwxtRoundSelector
+							roundTermLabel={roundTermLabel}
+							rounds={availableRounds}
+							selectedXkkzId={selectedXkkzId}
+							busy={roundBusy}
+							statusText={roundStatus || roundCloudStatus}
+							refreshDisabled={loginBusy}
+							on:refresh={refreshRounds}
+							on:select={(event) => handleSelectRound(event.detail.xkkzId)}
+						/>
+					{/if}
+
+					<div class="flex flex-wrap items-center gap-2">
+						<AppButton variant="primary" size="sm" on:click={handleCrawlData} disabled={$jwxtCrawlState.running}>
+							{$jwxtCrawlState.running ? t('panels.jwxt.statuses.crawling') : t('panels.jwxt.crawlData')}
+						</AppButton>
+						<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
+							{t('panels.jwxt.crawlHint')}
+						</span>
+					</div>
+
+					<AsyncTaskProgress
+						visible={$jwxtCrawlState.running || Boolean($jwxtCrawlState.progress?.total)}
+						statusText={crawlStatusText}
+						progress={$jwxtCrawlState.progress}
+						progressText={
+							$jwxtCrawlState.progress?.total
+								? t('panels.jwxt.statuses.crawlProgress', {
+										done: $jwxtCrawlState.progress.done,
+										total: $jwxtCrawlState.progress.total
+									})
+								: ''
+						}
+					/>
+
 					{#if !status?.loggedIn}
-						<form class="flex flex-col gap-3" on:submit|preventDefault={handleLogin}>
-							<div class="flex flex-col gap-3">
-								<AppField label={t('panels.jwxt.userIdLabel')}>
-									<input class={inputClass} type="text" autocomplete="username" bind:value={$jwxtRememberedUserId} />
-								</AppField>
-								<AppField label={t('panels.jwxt.passwordLabel')}>
-									<input class={inputClass} type="password" autocomplete="current-password" bind:value={password} />
-								</AppField>
+						<div class="flex flex-wrap items-center gap-2">
+							<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.loginMethodLabel')}</span>
+							<AppButton
+								variant={loginMethod === 'password' ? 'primary' : 'secondary'}
+								size="sm"
+								on:click={() => (loginMethod = 'password')}
+								disabled={loginBusy}
+							>
+								{t('panels.jwxt.loginMethodPassword')}
+							</AppButton>
+							<AppButton
+								variant={loginMethod === 'cookie' ? 'primary' : 'secondary'}
+								size="sm"
+								on:click={() => (loginMethod = 'cookie')}
+								disabled={loginBusy}
+							>
+								{t('panels.jwxt.loginMethodCookie')}
+							</AppButton>
+						</div>
+
+						{#if loginMethod === 'password'}
+							<form class="flex flex-col gap-3" on:submit|preventDefault={handleLogin}>
+								<div class="flex flex-col gap-3">
+									<AppField label={t('panels.jwxt.userIdLabel')}>
+										<input class={inputClass} type="text" autocomplete="username" bind:value={$jwxtRememberedUserId} />
+									</AppField>
+									<AppField label={t('panels.jwxt.passwordLabel')}>
+										<input class={inputClass} type="password" autocomplete="current-password" bind:value={password} />
+									</AppField>
+								</div>
+
+								<div class="flex flex-col gap-2 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-3">
+									<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.persistHint')}</div>
+									<div class="flex flex-wrap items-center gap-4 text-[var(--app-text-sm)]">
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist" value="none" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistNone')}</span>
+										</label>
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist" value="device" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistDevice')}</span>
+										</label>
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist" value="vault" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistVault')}</span>
+										</label>
+									</div>
+
+									{#if persistMode === 'vault'}
+										<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+											<AppField label={t('panels.jwxt.vaultPasswordLabel')}>
+												<input class={inputClass} type="password" autocomplete="new-password" bind:value={vaultPassword} />
+											</AppField>
+											<AppField label={t('panels.jwxt.vaultPasswordConfirmLabel')}>
+												<input class={inputClass} type="password" autocomplete="new-password" bind:value={vaultPasswordConfirm} />
+											</AppField>
+										</div>
+										<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.persistVaultHint')}</div>
+									{/if}
+								</div>
+
+								<AppControlRow>
+									<AppButton buttonType="submit" variant="primary" size="sm" disabled={loginBusy || autoLoginBusy}>
+										{loginBusy ? t('panels.jwxt.statuses.loggingIn') : t('panels.jwxt.login')}
+									</AppButton>
+									<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
+										{t('panels.jwxt.loginHint')}
+									</span>
+								</AppControlRow>
+							</form>
+						{:else}
+							<form class="flex flex-col gap-3" on:submit|preventDefault={importCookieHeader}>
+								<div class="flex flex-col gap-3">
+									<AppField label={t('panels.jwxt.userIdLabel')}>
+										<input class={inputClass} type="text" autocomplete="username" bind:value={$jwxtRememberedUserId} />
+									</AppField>
+									<AppField label={t('panels.jwxt.cookieHeaderLabel')}>
+										<AppTextArea rows={4} bind:value={cookieHeader} />
+									</AppField>
+								</div>
+
+								<div class="flex flex-col gap-2 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-3">
+									<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.persistHint')}</div>
+									<div class="flex flex-wrap items-center gap-4 text-[var(--app-text-sm)]">
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist-cookie" value="none" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistNone')}</span>
+										</label>
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist-cookie" value="device" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistDevice')}</span>
+										</label>
+										<label class="flex items-center gap-2">
+											<input type="radio" name="jwxt-persist-cookie" value="vault" bind:group={persistMode} />
+											<span>{t('panels.jwxt.persistVault')}</span>
+										</label>
+									</div>
+
+									{#if persistMode === 'vault'}
+										<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+											<AppField label={t('panels.jwxt.vaultPasswordLabel')}>
+												<input class={inputClass} type="password" autocomplete="new-password" bind:value={vaultPassword} />
+											</AppField>
+											<AppField label={t('panels.jwxt.vaultPasswordConfirmLabel')}>
+												<input class={inputClass} type="password" autocomplete="new-password" bind:value={vaultPasswordConfirm} />
+											</AppField>
+										</div>
+										<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.persistVaultHint')}</div>
+									{/if}
+								</div>
+
+								<AppControlRow>
+									<AppButton buttonType="submit" variant="primary" size="sm" disabled={loginBusy || autoLoginBusy}>
+										{loginBusy ? t('panels.jwxt.statuses.importingCookie') : t('panels.jwxt.importCookie')}
+									</AppButton>
+									<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
+										{t('panels.jwxt.cookieHint')}
+									</span>
+								</AppControlRow>
+							</form>
+						{/if}
+
+						{#if cookieHasPasswordVault}
+							<div class="flex flex-col gap-2 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-3">
+								<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.vaultUnlockHint')}</div>
+								<div class="flex flex-wrap items-end gap-2">
+									<div class="flex-1 min-w-[220px]">
+										<AppField label={t('panels.jwxt.vaultUnlockPasswordLabel')}>
+											<input class={inputClass} type="password" autocomplete="current-password" bind:value={vaultUnlockPassword} />
+										</AppField>
+									</div>
+									<div class="flex flex-wrap gap-2">
+										<AppButton variant="secondary" size="sm" on:click={unlockVaultAndImport} disabled={loginBusy}>
+											{t('panels.jwxt.vaultUnlockAndLogin')}
+										</AppButton>
+										<AppButton
+											variant="secondary"
+											size="sm"
+											on:click={() => clearJwxtCookieVault()}
+											disabled={loginBusy}
+										>
+											{t('panels.jwxt.vaultClear')}
+										</AppButton>
+									</div>
+								</div>
 							</div>
-							<AppControlRow>
-								<AppButton buttonType="submit" variant="primary" size="sm" disabled={loginBusy}>
-									{loginBusy ? t('panels.jwxt.statuses.loggingIn') : t('panels.jwxt.login')}
+						{/if}
+						{#if cookieHasDeviceVault}
+							<div class="flex flex-wrap items-center justify-between gap-2 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-3">
+								<div class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{t('panels.jwxt.deviceVaultHint')}</div>
+								<AppButton
+									variant="secondary"
+									size="sm"
+									on:click={() => clearJwxtCookieDeviceVault()}
+									disabled={loginBusy}
+								>
+									{t('panels.jwxt.deviceVaultClear')}
 								</AppButton>
-								<span class="text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
-									{t('panels.jwxt.loginHint')}
-								</span>
-							</AppControlRow>
-						</form>
+							</div>
+						{/if}
+					{/if}
+
+					{#if status?.loggedIn}
+						<div class="flex flex-wrap items-center gap-2">
+							<AppButton variant="secondary" size="sm" on:click={saveSessionNow} disabled={loginBusy}>
+								{t('panels.jwxt.persistSaveNow')}
+							</AppButton>
+							{#if cookieHasDeviceVault}
+								<AppButton variant="secondary" size="sm" on:click={() => clearJwxtCookieDeviceVault()} disabled={loginBusy}>
+									{t('panels.jwxt.deviceVaultClear')}
+								</AppButton>
+							{/if}
+							{#if cookieHasPasswordVault}
+								<AppButton variant="secondary" size="sm" on:click={() => clearJwxtCookieVault()} disabled={loginBusy}>
+									{t('panels.jwxt.vaultClear')}
+								</AppButton>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</AppControlPanel>
@@ -662,80 +1449,166 @@
 				description={t('panels.jwxt.enrollDescription')}
 				class="flex-[2_1_720px] min-w-[min(360px,100%)] max-w-[1200px]"
 			>
-				<form class="flex flex-col gap-3" on:submit|preventDefault={handleSearch}>
-					<AppField label={t('panels.jwxt.searchLabel')}>
-						<input class={inputClass} type="text" placeholder={t('panels.jwxt.searchPlaceholder')} bind:value={searchQuery} />
-					</AppField>
-					<AppControlRow>
-						<AppButton buttonType="submit" variant="secondary" size="sm" disabled={searchBusy || !status?.loggedIn}>
-							{searchBusy ? t('panels.jwxt.statuses.searching') : t('panels.jwxt.search')}
-						</AppButton>
-					</AppControlRow>
-					{#if searchStatus}
-						<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">{searchStatus}</p>
-					{/if}
-				</form>
-
-				{#if searchResults.length}
-					<div class="mt-3 flex flex-col gap-2">
-						{#each searchResults as row (row.kchId + ':' + row.jxbId)}
-							{@const localId = mapRemotePairToLocalId({ kchId: row.kchId, jxbId: row.jxbId })}
-							{@const entry = localId ? courseCatalogMap.get(localId) : null}
-							{#if entry}
-								<CourseCard
-									id={entry.id}
-									title={entry.title}
-									teacher={entry.teacher}
-									time={entry.slot ?? t('courseCard.noTime')}
-									courseCode={entry.courseCode}
-									credit={entry.credit ?? null}
-									status={entry.status}
-									capacity={entry.capacity}
-									vacancy={entry.vacancy}
-									colorSeed={entry.id}
-									specialTags={entry.specialTags}
-									onHover={() => handleHover(entry, 'list')}
-									onLeave={() => handleLeave('list')}
-								>
-									<CardActionBar slot="actions" class="justify-start">
-										{#if $selectedCourseIds.has(entry.id)}
-											<AppButton variant="secondary" size="sm" on:click={() => deselectCourse(entry.id)}>
-												{t('panels.jwxt.planDeselect')}
-											</AppButton>
-										{:else}
-											<AppButton variant="primary" size="sm" on:click={() => selectCourse(entry.id)}>
-												{t('panels.jwxt.planSelect')}
-											</AppButton>
-											<AppButton
-												variant="secondary"
-												size="sm"
-												on:click={() => ($wishlistCourseIds.has(entry.id) ? removeFromWishlist(entry.id) : addToWishlist(entry.id))}
-											>
-												{$wishlistCourseIds.has(entry.id) ? t('panels.jwxt.planWishlistRemove') : t('panels.jwxt.planWishlistAdd')}
-											</AppButton>
-										{/if}
-									</CardActionBar>
-								</CourseCard>
+				<div class="flex flex-col gap-3">
+					<CourseFiltersToolbar
+						filters={enrollFilters}
+						options={filterOptions}
+						mode="all"
+						statusModeScope="jwxt"
+						lockConflictMode="time"
+					/>
+					<CourseBulkBar
+						busy={enrollBulkBusy}
+						selectAllLabel={enrollBulkSelectLabel}
+						clearSelectionLabel={t('panels.jwxt.bulk.clearSelection')}
+						countLabel=""
+						executeLabel={t('panels.jwxt.bulk.enrollExecute')}
+						workingLabel={t('panels.jwxt.bulk.working')}
+						disableSelectAll={enrollTotalItems === 0}
+						disableClear={enrollBulkSelection.size === 0}
+						disableExecute={enrollBulkSelection.size === 0 || !status?.loggedIn}
+						onSelectAll={enrollBulkSelectVisible}
+						onClearSelection={enrollBulkClear}
+						onExecute={() => confirmBulkEnroll(Array.from(enrollBulkSelection))}
+					>
+						<svelte:fragment slot="leading">
+							<span class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">
+								{t('panels.jwxt.bulk.label').replace('{count}', String(enrollBulkSelection.size))}
+							</span>
+						</svelte:fragment>
+					</CourseBulkBar>
+					<div class="flex flex-col min-h-[240px] rounded-[var(--app-radius-lg)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)]">
+						{#if enrollTotalItems === 0}
+							<p class="px-6 py-10 text-center text-[var(--app-text-md)] text-[var(--app-color-fg-muted)]">
+								{t('panels.allCourses.empty')}
+							</p>
+						{:else}
+							{#if $paginationMode === 'paged'}
+								<div class="flex flex-col divide-y divide-[color:var(--app-color-border-subtle)]">
+									{#each enrollVisibleCourses as entry, index (entry.id)}
+										{@const absIndex = enrollWindowStartIndex + index}
+										{@const pairKey = `${entry.courseCode}::${entry.sectionId}`}
+										{@const alreadySelected = remoteSelectedKeySet.has(pairKey)}
+										{@const meta = enrollFilterResult.meta.get(entry.id)}
+										{@const timeConflict = meta?.conflict === 'time-conflict'}
+										{@const conflictItems = meta?.diagnostics?.length
+											? meta.diagnostics.map((d) => ({ label: d.label, value: d.reason }))
+											: null}
+										{@const showConflictBadges = $enrollFiltersBase.showConflictBadges}
+										<CourseCard
+											id={entry.id}
+											title={entry.title}
+											teacher={entry.teacher}
+											time={entry.slot ?? t('courseCard.noTime')}
+											courseCode={entry.courseCode}
+											credit={entry.credit ?? null}
+											status={entry.status}
+											capacity={entry.capacity}
+											vacancy={entry.vacancy}
+											colorSeed={entry.id}
+											specialTags={entry.specialTags}
+											onHover={() => handleHover(entry, 'list')}
+											onLeave={() => handleLeave('list')}
+											toneIndex={absIndex}
+											showConflictBadge={showConflictBadges && Boolean(conflictItems)}
+											conflictDetails={showConflictBadges ? conflictItems : null}
+										>
+											<svelte:fragment slot="meta-controls">
+												<CardBulkCheckbox
+													checked={enrollBulkSelection.has(entry.id)}
+													disabled={!isEnrollEligible(entry)}
+													ariaLabel={t('panels.jwxt.bulk.selectEnroll').replace('{name}', entry.title)}
+													on:toggle={() => enrollBulkToggle(entry.id)}
+												/>
+											</svelte:fragment>
+											<CardActionBar slot="actions" class="justify-start">
+												<AppButton
+													variant="primary"
+													size="sm"
+													on:click={() => confirmRemoteEnroll(entry)}
+													disabled={!status?.loggedIn || alreadySelected || timeConflict}
+												>
+													{t('panels.jwxt.enroll')}
+												</AppButton>
+											</CardActionBar>
+										</CourseCard>
+									{/each}
+								</div>
 							{:else}
-								<AppListCard title={row.courseName || row.kchId} subtitle={`${row.teacher} · ${row.kchId} · ${row.jxbId}`}>
-									{#if row.time}
-										<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)] break-words [overflow-wrap:anywhere]">
-											{row.time}
-										</p>
-									{/if}
-									<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-warning)]">
-										{t('panels.jwxt.planUnavailableHint')}
-									</p>
-									<CardActionBar slot="actions" class="justify-start">
-										<AppButton variant="secondary" size="sm" disabled>
-											{t('panels.jwxt.planUnavailable')}
-										</AppButton>
-									</CardActionBar>
-								</AppListCard>
+								<ContinuousPager
+									items={enrollCourses}
+									pageSize={enrollPageSizeValue}
+									neighbors={$pageNeighbors}
+									{scrollRoot}
+									bind:activePage={enrollContinuousActivePage}
+									let:page
+								>
+									<div class="flex flex-col divide-y divide-[color:var(--app-color-border-subtle)]">
+										{#each page.items as entry, index (entry.id)}
+											{@const absIndex = page.start + index}
+											{@const pairKey = `${entry.courseCode}::${entry.sectionId}`}
+											{@const alreadySelected = remoteSelectedKeySet.has(pairKey)}
+											{@const meta = enrollFilterResult.meta.get(entry.id)}
+											{@const timeConflict = meta?.conflict === 'time-conflict'}
+											{@const conflictItems = meta?.diagnostics?.length
+												? meta.diagnostics.map((d) => ({ label: d.label, value: d.reason }))
+												: null}
+											{@const showConflictBadges = $enrollFiltersBase.showConflictBadges}
+											<CourseCard
+												id={entry.id}
+												title={entry.title}
+												teacher={entry.teacher}
+												time={entry.slot ?? t('courseCard.noTime')}
+												courseCode={entry.courseCode}
+												credit={entry.credit ?? null}
+												status={entry.status}
+												capacity={entry.capacity}
+												vacancy={entry.vacancy}
+												colorSeed={entry.id}
+												specialTags={entry.specialTags}
+												onHover={() => handleHover(entry, 'list')}
+												onLeave={() => handleLeave('list')}
+												toneIndex={absIndex}
+												showConflictBadge={showConflictBadges && Boolean(conflictItems)}
+												conflictDetails={showConflictBadges ? conflictItems : null}
+											>
+												<svelte:fragment slot="meta-controls">
+													<CardBulkCheckbox
+														checked={enrollBulkSelection.has(entry.id)}
+														disabled={!isEnrollEligible(entry)}
+														ariaLabel={t('panels.jwxt.bulk.selectEnroll').replace('{name}', entry.title)}
+														on:toggle={() => enrollBulkToggle(entry.id)}
+													/>
+												</svelte:fragment>
+												<CardActionBar slot="actions" class="justify-start">
+													<AppButton
+														variant="primary"
+														size="sm"
+														on:click={() => confirmRemoteEnroll(entry)}
+														disabled={!status?.loggedIn || alreadySelected || timeConflict}
+													>
+														{t('panels.jwxt.enroll')}
+													</AppButton>
+												</CardActionBar>
+											</CourseCard>
+										{/each}
+									</div>
+								</ContinuousPager>
 							{/if}
-						{/each}
+						{/if}
+
+						{#if showEnrollPaginationFooter}
+							<div class="mt-auto border-t border-[color:var(--app-color-border-subtle)] px-3 py-1">
+								<AppPagination
+									currentPage={enrollCurrentPage}
+									totalPages={enrollTotalPages}
+									pageNeighbors={$pageNeighbors}
+									onPageChange={handleEnrollPageChange}
+								/>
+							</div>
+						{/if}
 					</div>
-				{/if}
+				</div>
 			</AppControlPanel>
 
 			{#if remoteSelected.length}
@@ -744,11 +1617,40 @@
 					description={t('panels.jwxt.remoteSelectedDescription')}
 					class="flex-[1_1_520px] min-w-[min(360px,100%)] max-w-[860px]"
 				>
-					<div class="flex flex-col gap-2">
-						{#each remoteSelected as item (item.kchId + ':' + item.jxbId)}
+					<div class="flex flex-col gap-3">
+						<CourseBulkBar
+							busy={dropBulkBusy}
+							selectAllLabel={t('panels.jwxt.bulk.selectAll')}
+							clearSelectionLabel={t('panels.jwxt.bulk.clearSelection')}
+							countLabel=""
+							executeLabel={t('panels.jwxt.bulk.dropExecute')}
+							workingLabel={t('panels.jwxt.bulk.working')}
+							disableSelectAll={remoteSelected.length === 0}
+							disableClear={dropBulkSelection.size === 0}
+							disableExecute={dropBulkSelection.size === 0 || !status?.loggedIn}
+							onSelectAll={dropBulkSelectAll}
+							onClearSelection={dropBulkClear}
+							onExecute={() => confirmBulkDrop(Array.from(dropBulkSelection))}
+						>
+							<svelte:fragment slot="leading">
+								<span class="text-[var(--app-text-sm)] text-[var(--app-color-fg-muted)]">
+									{t('panels.jwxt.bulk.label').replace('{count}', String(dropBulkSelection.size))}
+								</span>
+							</svelte:fragment>
+						</CourseBulkBar>
+
+						<div class="flex flex-col gap-2">
+							{#each remoteSelected as item (item.kchId + ':' + item.jxbId)}
+								{@const pairKey = `${item.kchId}::${item.jxbId}`}
 							{@const localId = mapRemotePairToLocalId(item)}
 							{@const entry = localId ? courseCatalogMap.get(localId) : null}
 							{#if entry}
+								{@const candidateGranularity = $termState?.settings.granularity.candidates ?? 'groupPreferred'}
+								{@const candidateGroupKey = deriveGroupKey(entry)}
+								{@const copyDisabled =
+									candidateGranularity === 'groupPreferred'
+										? ($termState?.selection.wishlistGroups ?? []).includes(candidateGroupKey)
+										: $wishlistCourseIds.has(entry.id)}
 								<CourseCard
 									id={entry.id}
 									title={entry.title}
@@ -764,15 +1666,28 @@
 									onHover={() => handleHover(entry, 'selected')}
 									onLeave={() => handleLeave('selected')}
 								>
+									<svelte:fragment slot="meta-controls">
+										<CardBulkCheckbox
+											checked={dropBulkSelection.has(pairKey)}
+											ariaLabel={t('panels.jwxt.bulk.selectDrop').replace('{name}', entry.title)}
+											on:toggle={() => dropBulkToggle(pairKey)}
+										/>
+									</svelte:fragment>
 									<CardActionBar slot="actions" class="justify-start">
-										<AppButton
-											variant="secondary"
-											size="sm"
-											on:click={() => deselectCourse(entry.id)}
-											disabled={!$selectedCourseIds.has(entry.id)}
-										>
-											{t('panels.jwxt.planDrop')}
-										</AppButton>
+										{#if $selectedCourseIds.has(entry.id)}
+											<AppButton variant="secondary" size="sm" on:click={() => deselectCourse(entry.id)}>
+												{t('panels.jwxt.planDrop')}
+											</AppButton>
+										{:else}
+											<AppButton
+												variant="secondary"
+												size="sm"
+												on:click={() => copyRemoteToWishlist(entry)}
+												disabled={copyDisabled}
+											>
+												{t('panels.jwxt.copyToWishlist')}
+											</AppButton>
+										{/if}
 										<AppButton
 											variant="danger"
 											size="sm"
@@ -784,16 +1699,21 @@
 												})}
 											disabled={!status?.loggedIn}
 										>
-											{t('panels.jwxt.dropNow')}
-										</AppButton>
-									</CardActionBar>
-								</CourseCard>
+										{t('panels.jwxt.dropNow')}
+									</AppButton>
+								</CardActionBar>
+							</CourseCard>
 							{:else}
 								<AppListCard title={`${item.kchId} · ${item.jxbId}`} subtitle={t('panels.jwxt.remoteSelectedNoMapping')}>
 									<p class="m-0 text-[var(--app-text-xs)] text-[var(--app-color-warning)]">
 										{t('panels.jwxt.planUnavailableHint')}
 									</p>
 									<CardActionBar slot="actions" class="justify-start">
+										<CardBulkCheckbox
+											checked={dropBulkSelection.has(pairKey)}
+											ariaLabel={t('panels.jwxt.bulk.selectDropNoMapping').replace('{kchId}', item.kchId).replace('{jxbId}', item.jxbId)}
+											on:toggle={() => dropBulkToggle(pairKey)}
+										/>
 										<AppButton
 											variant="danger"
 											size="sm"
@@ -810,7 +1730,8 @@
 									</CardActionBar>
 								</AppListCard>
 							{/if}
-						{/each}
+							{/each}
+						</div>
 					</div>
 				</AppControlPanel>
 			{/if}

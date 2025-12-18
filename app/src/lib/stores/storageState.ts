@@ -1,20 +1,34 @@
 import { derived, get } from 'svelte/store';
-import { locale } from '../i18n/localeStore';
-import type { LocaleId } from '../i18n/localeStore';
+import { localeSetting } from '../i18n/localeStore';
+import type { LocaleSetting } from '../i18n/localeStore';
 import { currentTheme, setTheme, availableThemes } from './uiTheme';
 import type { ThemeId } from '../../config/ui';
-import { collapseCoursesByName } from './courseDisplaySettings';
+import { materialSeedColor } from './materialThemeColor';
+import { collapseCoursesByName, hideFilterStatusControl } from './courseDisplaySettings';
 import { crossCampusAllowed, selectionMode, setCrossCampusAllowed, setSelectionMode } from './coursePreferences';
 import type { SelectionMode } from './coursePreferences';
-import { paginationMode, pageSize, pageNeighbors, showWeekends } from './paginationSettings';
+import {
+	paginationMode,
+	pageSize,
+	pageNeighbors,
+	showWeekends,
+	setPaginationMode,
+	setPageSize,
+	setPageNeighbors,
+	setShowWeekends
+} from './paginationSettings';
 import { timeTemplatesStore, replaceTimeTemplates, type TimeTemplate } from '../data/solver/timeTemplates';
+import { setMaterialSeedColor } from './materialThemeColor';
+import { setLocaleSetting } from './localePreference';
 
 export interface StoragePreferencesSnapshot {
 	locale: string;
 	themeId: string;
+	materialSeedColor?: string;
 	collapseCoursesByName: boolean;
+	hideFilterStatusControl: boolean;
 	crossCampusAllowed: boolean;
-	selectionMode: SelectionMode;
+	selectionMode: SelectionMode | null;
 	pagination: {
 		mode: 'paged' | 'continuous';
 		pageSize: number;
@@ -26,9 +40,11 @@ export interface StoragePreferencesSnapshot {
 
 export const storageState = derived(
 	[
-		locale,
+		localeSetting,
 		currentTheme,
+		materialSeedColor,
 		collapseCoursesByName,
+		hideFilterStatusControl,
 		crossCampusAllowed,
 		selectionMode,
 		paginationMode,
@@ -40,7 +56,9 @@ export const storageState = derived(
 	([
 		$locale,
 		$theme,
+		$materialSeedColor,
 		$collapse,
+		$hideFilterStatusControl,
 		$crossCampus,
 		$selectionMode,
 		$paginationMode,
@@ -51,7 +69,9 @@ export const storageState = derived(
 	]) => ({
 		locale: $locale,
 		themeId: $theme,
+		materialSeedColor: $materialSeedColor,
 		collapseCoursesByName: $collapse,
+		hideFilterStatusControl: $hideFilterStatusControl,
 		crossCampusAllowed: $crossCampus,
 		selectionMode: $selectionMode,
 		pagination: {
@@ -71,23 +91,27 @@ export function getStorageStateSnapshot(): StoragePreferencesSnapshot {
 export function applyStoragePreferences(preferences?: StoragePreferencesSnapshot): boolean {
 	if (!preferences) return false;
 	try {
-		if (preferences.locale && isLocaleIdValue(preferences.locale)) {
-			locale.set(preferences.locale);
+		if (preferences.locale && isLocaleSettingValue(preferences.locale)) {
+			setLocaleSetting(preferences.locale);
 		}
 		if (preferences.themeId && isThemeIdValue(preferences.themeId)) {
 			setTheme(preferences.themeId);
 		}
+		if (preferences.materialSeedColor && typeof preferences.materialSeedColor === 'string') {
+			setMaterialSeedColor(preferences.materialSeedColor);
+		}
 		collapseCoursesByName.set(Boolean(preferences.collapseCoursesByName));
+		hideFilterStatusControl.set(Boolean(preferences.hideFilterStatusControl));
 		setCrossCampusAllowed(Boolean(preferences.crossCampusAllowed));
 		if (preferences.selectionMode) {
 			setSelectionMode(preferences.selectionMode);
 		}
 		const pagination = preferences.pagination;
 		if (pagination) {
-			paginationMode.set(pagination.mode);
-			pageSize.set(pagination.pageSize);
-			pageNeighbors.set(pagination.pageNeighbors);
-			showWeekends.set(Boolean(pagination.showWeekends));
+			setPaginationMode(pagination.mode);
+			setPageSize(pagination.pageSize);
+			setPageNeighbors(pagination.pageNeighbors);
+			setShowWeekends(Boolean(pagination.showWeekends));
 		}
 		if (Array.isArray(preferences.timeTemplates)) {
 			replaceTimeTemplates(preferences.timeTemplates);
@@ -99,11 +123,11 @@ export function applyStoragePreferences(preferences?: StoragePreferencesSnapshot
 	}
 }
 
-const SUPPORTED_LOCALES: LocaleId[] = ['zh-CN', 'en-US'];
+const SUPPORTED_LOCALES: LocaleSetting[] = ['auto', 'zh-CN', 'en-US'];
 const SUPPORTED_THEME_IDS = new Set<ThemeId>(availableThemes.map((theme) => theme.id));
 
-function isLocaleIdValue(value: string): value is LocaleId {
-	return SUPPORTED_LOCALES.includes(value as LocaleId);
+function isLocaleSettingValue(value: string): value is LocaleSetting {
+	return SUPPORTED_LOCALES.includes(value as LocaleSetting);
 }
 
 function isThemeIdValue(value: string): value is ThemeId {

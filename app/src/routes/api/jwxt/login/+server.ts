@@ -4,11 +4,11 @@ import { createJwxtHttpClient } from '../../../../lib/server/jwxt/client';
 import { encryptPassword } from '../../../../lib/server/jwxt/crypto';
 import { parseHiddenInputsByName } from '../../../../lib/server/jwxt/htmlForms';
 import {
-	buildQueryContext,
 	buildSelectionIndexUrl,
 	buildSsoEntryUrl,
 	parseSelectionPageFields
 } from '../../../../lib/server/jwxt/selectionContext';
+import { refreshSelectionContext } from '../../../../lib/server/jwxt/contextRefresh';
 import { cleanupExpiredSessions, createSession, getSession, touchSession } from '../../../../lib/server/jwxt/sessionStore';
 
 type LoginBody = { userId: string; password: string };
@@ -101,11 +101,10 @@ export const POST: RequestHandler = async ({ cookies, request, url }) => {
 		}
 		const selectionHtml = await selectionRes.text();
 		const fields = parseSelectionPageFields(selectionHtml);
-		const context = buildQueryContext(fields);
 
 		session.account = { userId: body.userId.trim() };
 		session.fields = fields;
-		session.context = context;
+		await refreshSelectionContext(session);
 		touchSession(session);
 
 		return json({

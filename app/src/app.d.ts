@@ -9,6 +9,10 @@ declare global {
 		// interface Platform {}
 	}
 
+	interface Window {
+		__shuDebug?: Record<string, any>;
+	}
+
 interface ImportMetaEnv {
 		readonly PUBLIC_GITHUB_CLIENT_ID?: string;
 	}

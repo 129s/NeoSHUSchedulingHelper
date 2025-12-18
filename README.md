@@ -1,72 +1,279 @@
-SHU JWXT Course Crawler
-=======================
+# NeoSHUCourseHelper
 
-This repository now contains a fresh implementation of a crawler that can log
-in to the新上海大学教务系统 (`https://jwxt.shu.edu.cn`) via the official SSO jump
-and export the complete list of available教学班信息 for the current学期/选课轮次.
+众所周知，2024年是艰难的一年。
 
-Usage
------
+一年之内，我们经历了三个选课系统的变化。
 
-Web App (SSG, GitHub Pages)
----------------------------
+随着新选课系统的引入和学期改制，这是一个新版的前端纯静态的，同时允许后端部署的新选课助手。
 
-The `app/` directory contains a SvelteKit UI that builds as a fully static site and can be deployed to GitHub Pages (`https://<user>.github.io/<repo>/`).
+功能:
 
-- Enable GitHub Pages for the repository: Settings → Pages → Source: GitHub Actions.
-- Push to `main`/`master` and wait for the `Deploy to GitHub Pages` workflow.
+* 从正方教务爬虫课程信息，导入，一键pull和push
+* 对于单双周和上半下半学期的明显的ui逻辑
+* SAT求解器使得可以处理复杂的连环调课问题
+* github同步账户数据
 
-Local build:
+---
 
-    cd app
-    npm install
-    npm run build
+## 快速开始
 
-All crawler assets now live in `crawler/`, managed by `uv` via
-`crawler/pyproject.toml`.
+### 部署 Web 应用（3 分钟）
 
-1.  Prepare the environment (Python 3.10+):
+1. **启用 GitHub Pages**
 
-        cd crawler
-        uv venv .venv
-        uv pip install -r pyproject.toml
+   - 项目设置 → Pages → Source: GitHub Actions
+   - Push 到 `main` 分支，等待自动部署
+2. **本地构建**
 
-2.  Run the crawler (either via the script entrypoint or directly):
+   ```bash
+   cd app
+   npm install
+   npm run build
+   ```
 
-        uv run jwxt-crawler -u <学号> -p <密码>
-        # 或者
-        uv run python jwxt_crawler.py -u <学号> -p <密码>
+   构建输出放在 `app/build/`，可部署到任何静态服务器。
 
-    Optional arguments:
+### 爬取课程数据（初次登录 < 1 分钟）
 
-    * `-o, --output-dir DIR` (default `data`) – target directory for JSON.
-    * `--password-stdin` – read password from standard input without echo.
+**前置要求**：Python 3.10+
 
-3.  Output structure after a successful run:
+```bash
+cd crawler
+uv venv .venv
+source .venv/bin/activate  # macOS/Linux
+# 或 .venv\Scripts\activate  # Windows
 
-        crawler/data/
-        ├── current.json          # 所有已导出的学期编号列表
-        └── terms/
-            └── 2025-16.json      # 某个学期的课程列表
+uv pip install -e .
+```
 
-Implementation Notes
---------------------
+**运行爬虫**：
 
-* The crawler mimics a browser:
-  * 请求 `https://jwxt.shu.edu.cn/sso/shulogin`，自动跳转到 `newsso.shu.edu.cn`
-    并使用 RSA 公钥加密密码后登录；
-  * 再顺着 302 跳转回 `jwglxt`，生成有效的 `JSESSIONID`。
-* 选课页面会根据当前帐号自动选择可用的学期/选课批次。脚本会读取页面里所有隐藏
-  字段，避免硬编码 “春/秋/夏” 等常量，未来系统扩展时无需修改。
-* 课程数据通过以下 AJAX 接口完成抓取：
-  * `.../zzxkyzb_cxZzxkYzbPartDisplay.html` – 批量拉取课程（按教学班）；
-  * `.../zzxkyzbjk_cxJxbWithKchZzxkYzb.html` – 单一课程的详细教学班信息。
-* 所有课程最终规范化为统一 JSON 字段（课程号、课程名、教师、容量、时间、地点、
-  限制信息等），并附带 `hash` 与 `updateTimeMs` 方便增量校验。
+```bash
+# 首次登录（需要输入学号和密码）
+uv run jwxt-crawler -u <学号> -p <密码>
 
-安全提示
---------
+# 使用加密 Cookie 免密刷新（第二次及以后）
+uv run jwxt-crawler
+```
 
-* 账号密码仅用于与学校官方服务器通信，脚本不会将信息写入仓库。
-* 建议使用一次性环境变量或 `--password-stdin` 传递口令，避免留存明文。
-* 请合理控制抓取频率，避免对学校服务器造成压力。
+**高级选项**：
+
+| 选项                     | 说明                                         | 示例                                 |
+| ------------------------ | -------------------------------------------- | ------------------------------------ |
+| `-o, --output-dir`     | 课程数据输出目录（默认 `data`）            | `-o ~/my_courses`                  |
+| `--password-stdin`     | 从标准输入读取密码（不回显）                 | 配合脚本使用                         |
+| `--cookie-header`      | 跳过登录，直接使用已有 Cookie                | `--cookie-header "JSESSIONID=..."` |
+| `--campus-scope`       | 校区范围（`all` \| `current` \| 具体值） | `--campus-scope all`               |
+| `--clear-cookie-store` | 清除保存的 Cookie 和密钥                     | 需要重新登录时用                     |
+
+**输出示例**：
+
+```
+crawler/data/
+├── current.json          # 当前学期信息与轮次（termId, jwxtRound）
+└── terms/
+    └── 2025-16--xkkz-<id>.json   # 学期 2025-16、轮次 <id> 的课程列表
+```
+
+---
+
+## 项目结构
+
+```
+.
+├── app/                    # 前端选课应用（SvelteKit + Vite）
+│   ├── src/               # 源代码（Svelte 组件、路由、类型）
+│   ├── package.json       # Node.js 依赖
+│   ├── build/             # 构建输出（静态 HTML/JS/CSS）
+│   └── README.md          # 应用独立文档
+│
+├── crawler/               # Python 爬虫与数据处理
+│   ├── jwxt_crawler.py    # 爬虫主程序
+│   ├── pyproject.toml     # Python 依赖（uv 格式）
+│   └── data/              # 课程 JSON 快照（构建时复制到前端）
+│
+├── scripts/               # 工具脚本
+│   ├── check_i18n.py      # 国际化文案检查
+│   ├── dev-smoke.sh       # 开发环境快速验证
+│   └── ...
+│
+└── docs/                  # 开发文档（架构、状态机等）
+    └── STATE.md           # 应用状态机与数据流说明
+```
+
+**忽略项**（`.gitignore` 中排除，不在版本控制内）：
+
+- `agentTemps/` — 开发助手临时文件
+- `openspec/` — 项目规划与 spec 文档
+- `.secrets.*` — 本地 Cookie 与密钥（仅本机有效）
+- `PLAN.md`, `AGENTS.md` — 开发计划文档
+
+---
+
+## 核心工作流程
+
+### 1️⃣ 爬取课程（首次）
+
+学生通过爬虫脚本登录教务系统，导出当前学期的课程列表。
+
+```bash
+cd crawler && uv run jwxt-crawler -u <学号> -p <密码>
+```
+
+**爬虫行为**：
+
+- 请求教务系统 SSO，自动重定向到大学统一登录平台
+- 使用 RSA 公钥加密密码，通过 Cookies 建立会话（`JSESSIONID`）
+- 调用内部 AJAX 接口拉取所有教学班信息
+- 将课程规范化为统一 JSON 格式，包含课号、课名、教师、时间、地点、容量、限制信息等
+
+**输出**：`crawler/data/terms/<termId>.json` — 课程 JSON 列表
+
+### 2️⃣ 配置数据源（可选）
+
+若要让 Web 应用自动从远端拉取最新课程数据，在构建时设置环境变量：
+
+```bash
+export VITE_CRAWLER_CURRENT_URL="/crawler/data/current.json"
+export VITE_CRAWLER_TERMS_BASE_URL="/crawler/data/terms/"
+
+cd app && npm run build
+```
+
+如果未设置，应用将使用构建时打包的快照（完全离线可用）。
+
+### 3️⃣ 使用 Web 前端选课
+
+打开已部署的应用（如 `https://<user>.github.io/<repo>/`）：
+
+- **导入课程** — 加载 JSON 快照或从云端同步
+- **智能搜索与筛选** — 按课号、课名、教师、时间等条件快速定位
+- **排班冲突检测** — 自动识别时间冲突的课程组合
+- **本地保存** — 选课方案存储在浏览器 IndexedDB，支持离线查看和恢复
+
+---
+
+## 技术实现细节
+
+### 爬虫设计
+
+| 组件                  | 说明                                                           |
+| --------------------- | -------------------------------------------------------------- |
+| **SSO 登录**    | RSA 加密密码 + Cookie 会话管理                                 |
+| **选课页解析**  | 动态读取隐藏字段，支持多学期、多轮次                           |
+| **AJAX 接口**   | `.../zzxkyzb_*` 系列接口批量拉取教学班                       |
+| **数据规范化**  | 统一的 JSON 字段，带 `hash` 与 `updateTimeMs` 用于增量校验 |
+| **Cookie 加密** | 本地保存加密 Cookie（RSA），下次自动免密登录                   |
+
+### 前端应用
+
+- **框架** — SvelteKit + Vite（实时热更新）
+- **组件库** — Fluent UI Web Components（微软设计语言）
+- **数据存储** — Svelte store（响应式） + IndexedDB（持久化）
+- **国际化** — 支持中英文（i18n 检查工具见 `scripts/check_i18n.py`）
+
+### 部署
+
+- **静态生成** — 构建后无需后端服务器，可部署到 GitHub Pages、Netlify 等
+- **CI/CD** — 推送到 `main` 自动触发 GitHub Actions 构建和部署
+- **缓存策略** — 课程数据存储在 `localStorage`，支持在线更新或完全离线使用
+
+---
+
+## 安全与隐私
+
+- 🔐 **密码安全** — 密码仅用于一次性学校登录，不会被保存或上传
+
+  - 推荐使用 `--password-stdin` 或环境变量临时传递
+  - 首次登录后，脚本自动保存**加密 Cookie**，下次直接免密刷新
+- 🗝️ **本地加密存储** — Cookie 加密密钥存储在本机
+
+  - `crawler/.jwxt_cookie.enc.json` — 加密 Cookie
+  - `crawler/.jwxt_cookie_rsa.pem` — RSA 私钥（🚫 **不要上传到 Git**）
+  - 这些文件已在 `.gitignore` 中排除
+- 📱 **浏览器隐私** — 选课数据仅存储在本地浏览器，不上传第三方服务器
+- ⚖️ **责任使用** — 请合理控制爬虫频率，避免对学校服务器造成压力
+
+---
+
+## 文件与文件夹说明
+
+| 路径              | 用途                                                  |
+| ----------------- | ----------------------------------------------------- |
+| `app/`          | SvelteKit 前端应用源代码与构建配置                    |
+| `app/src/`      | Svelte 组件、路由、类型定义                           |
+| `app/build/`    | 构建输出（静态 HTML/CSS/JS），可直接部署              |
+| `crawler/`      | Python 爬虫与数据处理脚本                             |
+| `crawler/data/` | 课程 JSON 快照（`current.json` 和 `terms/` 目录） |
+| `scripts/`      | 辅助工具脚本（i18n 检查、开发验证等）                 |
+| `docs/`         | 开发文档（状态机、架构等）                            |
+
+---
+
+## 故障排查
+
+### Web 应用无法加载课程
+
+1. **检查数据源配置** — 确认 `VITE_CRAWLER_*` 环境变量是否正确设置
+2. **检查浏览器缓存** — 打开开发者工具 → Application → Clear site data
+3. **检查 JSON 格式** — 使用 `python3 -m json.tool crawler/data/current.json` 验证
+
+### 爬虫登录失败
+
+1. **确认学号和密码** — 逐字检查是否正确
+2. **检查学校网络** — 确认可以访问 `https://jwxt.shu.edu.cn`
+3. **重新清除 Cookie** — `uv run jwxt-crawler --clear-cookie-store` 后重试
+4. **启用调试** — 查看爬虫日志了解具体失败步骤
+
+### 导入课程后部分课程不显示
+
+- 可能原因：课程数据格式不完整或有缺失字段
+- 解决：检查 `app/src/lib/types/course.ts` 中的必需字段，并对照 JSON 是否包含所有字段
+
+---
+
+## 开发与贡献
+
+### 本地开发环境
+
+```bash
+# 安装依赖
+cd app && npm install
+cd ../crawler && uv pip install -e .
+
+# 运行开发服务器（前端）
+cd app && npm run dev
+
+# 在另一个终端爬取最新数据
+cd crawler && uv run jwxt-crawler --output-dir ../app/static/data
+```
+
+### 代码检查
+
+```bash
+# 检查 i18n 文案完整性
+python3 scripts/check_i18n.py all
+
+# 快速验证开发环境
+bash scripts/dev-smoke.sh
+```
+
+### 提交与发布
+
+- 创建特性分支并在 PR 中说明功能与测试方法
+- 确保所有文案已通过 i18n 检查
+- 合并后自动部署到 GitHub Pages
+
+---
+
+## 许可证
+
+本项目遵循 MIT License。详见 LICENSE 文件。
+
+---
+
+**需要帮助？** 查看详细文档：
+
+- 🔧 应用开发 — [app/README.md](app/README.md)
+- 📊 数据流与状态机 — [docs/STATE.md](docs/STATE.md)
+- 🤖 项目规划与 AI Agent 约束 — [AGENTS.md](AGENTS.md)（开发者文档，不在 Git 版本控制中）

@@ -1,0 +1,58 @@
+:root:not([data-theme]),
+:root[data-theme='material'] {
+  /* Bridge mdui typescale into the app's token layer (used by app/tokens/_base.css). */
+  --token-font-label-small-size: var(--mdui-typescale-label-small-size, 0.75rem);
+  --token-font-body-medium-size: var(--mdui-typescale-body-medium-size, 0.875rem);
+  --token-font-body-large-size: var(--mdui-typescale-body-large-size, 1rem);
+  --token-font-title-medium-size: var(--mdui-typescale-title-medium-size, 1.125rem);
+
+  /* Bridge mdui shape into the app's token radius layer. */
+  --token-radius-xs: var(--mdui-shape-corner-extra-small, 0.25rem);
+  --token-radius-sm: var(--mdui-shape-corner-small, 0.5rem);
+  --token-radius-md: var(--mdui-shape-corner-medium, 0.75rem);
+  --token-radius-lg: var(--mdui-shape-corner-large, 1rem);
+  --token-radius-xl: var(--mdui-shape-corner-extra-large, 1.25rem);
+
+  /* Bridge mdui elevation into the app's token elevation layer. */
+  --token-elevation-0: var(--mdui-elevation-level0, none);
+  --token-elevation-1: var(--mdui-elevation-level1, 0 1px 2px rgba(15, 18, 35, 0.08));
+  --token-elevation-2: var(--mdui-elevation-level2, 0 2px 8px rgba(15, 18, 35, 0.1));
+  --token-elevation-3: var(--mdui-elevation-level3, 0 12px 30px rgba(15, 18, 35, 0.14));
+
+  /* Bridge mdui runtime palette (RGB tuples) into `--md-sys-color-*` so the Virtual Theme Layer stays stable. */
+  --md-sys-color-primary: rgb(var(--mdui-color-primary, 53, 86, 196));
+  --md-sys-color-on-primary: rgb(var(--mdui-color-on-primary, 255, 255, 255));
+  --md-sys-color-primary-container: rgb(var(--mdui-color-primary-container, 219, 226, 255));
+  --md-sys-color-on-primary-container: rgb(var(--mdui-color-on-primary-container, 0, 21, 90));
+
+  --md-sys-color-secondary: rgb(var(--mdui-color-secondary, 92, 93, 114));
+  --md-sys-color-on-secondary: rgb(var(--mdui-color-on-secondary, 255, 255, 255));
+  --md-sys-color-secondary-container: rgb(var(--mdui-color-secondary-container, 224, 224, 246));
+  --md-sys-color-on-secondary-container: rgb(var(--mdui-color-on-secondary-container, 24, 25, 44));
+
+  --md-sys-color-tertiary: rgb(var(--mdui-color-tertiary, 122, 84, 137));
+  --md-sys-color-on-tertiary: rgb(var(--mdui-color-on-tertiary, 255, 255, 255));
+  --md-sys-color-tertiary-container: rgb(var(--mdui-color-tertiary-container, 250, 216, 255));
+  --md-sys-color-on-tertiary-container: rgb(var(--mdui-color-on-tertiary-container, 48, 18, 63));
+
+  --md-sys-color-error: rgb(var(--mdui-color-error, 186, 26, 26));
+  --md-sys-color-on-error: rgb(var(--mdui-color-on-error, 255, 255, 255));
+  --md-sys-color-error-container: rgb(var(--mdui-color-error-container, 255, 218, 214));
+  --md-sys-color-on-error-container: rgb(var(--mdui-color-on-error-container, 65, 0, 2));
+
+  --md-sys-color-background: rgb(var(--mdui-color-background, 253, 252, 255));
+  --md-sys-color-on-background: rgb(var(--mdui-color-on-background, 15, 18, 35));
+
+  --md-sys-color-surface: rgb(var(--mdui-color-surface, 253, 252, 255));
+  --md-sys-color-on-surface: rgb(var(--mdui-color-on-surface, 15, 18, 35));
+  --md-sys-color-surface-variant: rgb(var(--mdui-color-surface-variant, 241, 240, 246));
+  --md-sys-color-on-surface-variant: rgb(var(--mdui-color-on-surface-variant, 95, 100, 119));
+
+  --md-sys-color-surface-container-low: rgb(var(--mdui-color-surface-container-low, 238, 240, 246));
+  --md-sys-color-surface-container: rgb(var(--mdui-color-surface-container, 233, 236, 244));
+  --md-sys-color-surface-container-high: rgb(var(--mdui-color-surface-container-high, 245, 247, 251));
+  --md-sys-color-surface-container-highest: rgb(var(--mdui-color-surface-container-highest, 230, 232, 238));
+
+  --md-sys-color-outline: rgb(var(--mdui-color-outline, 125, 127, 148));
+  --md-sys-color-outline-variant: rgb(var(--mdui-color-outline-variant, 197, 199, 214));
+}

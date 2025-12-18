@@ -1,16 +1,27 @@
 import { t } from '../i18n';
 import type { CourseCatalogEntry } from '../data/catalog/courseCatalog';
-import { courseCatalogMap } from '../data/catalog/courseCatalog';
+import { courseCatalog, courseCatalogMap } from '../data/catalog/courseCatalog';
 import type { CourseFilterState } from '../stores/courseFilters';
 import { selectionFiltersConfig } from '../stores/courseFilters';
 import type { ConflictFilterMode } from '../stores/courseFilters';
 import type { WeekDescriptor } from '../data/InsaneCourseData';
 import type { SortField, LimitRuleKey } from '../../config/selectionFilters';
+import { parseCourseQuickQuery, type CourseQuickQueryToken } from './courseQuickQuery';
+import { deriveGroupKey } from '../data/termState/groupKey';
 
 export interface CourseFilterMeta {
 	conflict: 'none' | 'time-conflict' | 'hard-conflict';
 	conflictTargets: string[];
-	diagnostics: Array<{ label: 'conflic' | 'impossible' | 'weak-impossible'; reason?: string }>;
+	diagnostics: Array<{
+		label: 'hard-time-conflict' | 'hard-impossible' | 'soft-time-conflict' | 'soft-impossible';
+		reason?: string;
+	}>;
+	timeConflict: boolean;
+	hardTimeConflict: boolean;
+	hardImpossible: boolean;
+	softTimeConflict: boolean;
+	softImpossible: boolean;
+	currentImpossible: boolean;
 }
 
 export interface CourseFilterResult {
@@ -22,8 +33,10 @@ export interface CourseFilterResult {
 export interface CourseFilterContext {
 	selectedIds?: Set<string>;
 	wishlistIds?: Set<string>;
-	hardConflicts?: Map<string, string[]>;
+	wishlistGroupKeys?: Set<string>;
 	selectedSchedule?: ScheduleSlot[];
+	changeScope?: 'FIX_SELECTED_SECTIONS' | 'RESELECT_WITHIN_SELECTED_GROUPS' | 'REPLAN_ALL';
+	conflictGranularity?: 'section' | 'group';
 }
 
 interface ScheduleSlot {
@@ -35,6 +48,27 @@ interface ScheduleSlot {
 }
 
 const DEFAULT_MAX_WEEKS = 20;
+const groupIndex: Map<string, CourseCatalogEntry[]> = (() => {
+	const map = new Map<string, CourseCatalogEntry[]>();
+	for (const entry of courseCatalog) {
+		const key = deriveGroupKey(entry) as unknown as string;
+		const list = map.get(key) ?? [];
+		list.push(entry);
+		map.set(key, list);
+	}
+	return map;
+})();
+
+function getGroupEntries(groupKey: string): CourseCatalogEntry[] {
+	return groupIndex.get(groupKey) ?? [];
+}
+
+type CourseMetaCache = {
+	key: string;
+	meta: Map<string, CourseFilterMeta>;
+};
+
+let cachedCourseMeta: CourseMetaCache | null = null;
 
 function resolveConflictTargetLabel(id: string) {
 	const entry = courseCatalogMap.get(id);
@@ -54,52 +88,48 @@ export function applyCourseFilters(
 	state: CourseFilterState,
 	context: CourseFilterContext = {}
 ): CourseFilterResult {
-	const meta = new Map<string, CourseFilterMeta>();
 	const selectedIds = context.selectedIds ?? new Set<string>();
 	const wishlistIds = context.wishlistIds ?? new Set<string>();
-	const hardConflicts = context.hardConflicts ?? new Map<string, string[]>();
-	const schedule = context.selectedSchedule ?? buildScheduleIndex(selectedIds);
+	const selectedGroupKeys = collectGroupKeys(selectedIds);
+	const wishlistGroupKeys = collectGroupKeys(wishlistIds, context.wishlistGroupKeys);
+	const conflictGranularity = context.conflictGranularity ?? 'section';
+	const metaIndex = getOrBuildCourseMetaIndex({
+		selectedIds,
+		selectedSchedule: context.selectedSchedule,
+		changeScope: context.changeScope
+	});
+	const emptyMeta: CourseFilterMeta = {
+		conflict: 'none',
+		conflictTargets: [],
+		diagnostics: [],
+		timeConflict: false,
+		hardTimeConflict: false,
+		hardImpossible: false,
+		softTimeConflict: false,
+		softImpossible: false,
+		currentImpossible: false
+	};
 
 	const filtered: CourseCatalogEntry[] = [];
 	const keyword = state.keyword.trim();
 	const regexTargets = state.regexTargets.length ? state.regexTargets : selectionFiltersConfig.regex.targets;
 	const limitRules = selectionFiltersConfig.limitRules;
+	const quickTokens = !state.regexEnabled && keyword ? parseCourseQuickQuery(keyword) : [];
 
 	for (const course of courses) {
-		const courseMeta: CourseFilterMeta = { conflict: 'none', conflictTargets: [], diagnostics: [] };
+		const groupKey = deriveGroupKey(course) as unknown as string;
+		const isSelected = selectedIds.has(course.id);
+		const isPinned = isSelected || wishlistIds.has(course.id) || wishlistGroupKeys.has(groupKey);
+		const courseMeta = metaIndex.get(course.id) ?? emptyMeta;
 
-		const hardTargets = hardConflicts.get(course.id);
-		if (hardTargets?.length) {
-			courseMeta.conflict = 'hard-conflict';
-			courseMeta.conflictTargets = hardTargets;
-			const targetLabel = formatConflictTargets(hardTargets);
-			courseMeta.diagnostics.push({
-				label: 'conflic',
-				reason: targetLabel
-					? t('conflict.hardConflict').replace('{targets}', targetLabel)
-					: t('panels.common.conflictHard')
-			});
-			courseMeta.diagnostics.push({ label: 'impossible' });
-		} else {
-			const overlaps = detectTimeConflicts(course, schedule);
-			if (overlaps.length) {
-				courseMeta.conflict = 'time-conflict';
-				courseMeta.conflictTargets = overlaps;
-				const overlapLabel = formatConflictTargets(overlaps);
-				courseMeta.diagnostics.push({
-					label: 'conflic',
-					reason: overlapLabel
-						? t('conflict.timeConflict').replace('{overlaps}', overlapLabel)
-						: t('panels.common.conflictTime')
-				});
-			}
-		}
-
-		if (!matchConflictMode(courseMeta, state.conflictMode)) continue;
-		if (!matchDisplayOption(course.id, state.displayOption, selectedIds, wishlistIds)) continue;
-		if (!matchSimple(course.campus, state.campus)) continue;
+		// conflictMode is a judgement mode; it should not filter by itself.
+		// "显示冲突项目" 关闭时：列表需要保持“纯净”，过滤掉当前 conflictMode 判定为冲突的条目。
+		if (!state.showConflictBadges && !isPinned && isConflictItem(courseMeta, state.conflictMode, conflictGranularity))
+			continue;
+		if (!matchStatusMode(course, state.statusMode, selectedIds, wishlistIds, selectedGroupKeys, wishlistGroupKeys))
+			continue;
+		if (!matchCampus(course.campus, state.campus)) continue;
 		if (!matchSimple(course.college ?? '', state.college)) continue;
-		if (!matchSimple(course.major ?? '', state.major)) continue;
 		if (!matchTeachingLanguage(course.teachingLanguage ?? t('config.teachingLanguages.unspecified'), state.teachingLanguage)) continue;
 		if (!matchSpecial(course.specialType ?? [], state.specialFilter)) continue;
 		if (!matchSpecialTags(course.specialFilterTags ?? [], state.specialTags)) continue;
@@ -107,42 +137,190 @@ export function applyCourseFilters(
 		if (!matchCredit(course.credit, state.minCredit, state.maxCredit)) continue;
 		if (!matchCapacity(course.vacancy, state.capacityMin)) continue;
 		if (!matchLimitModes(course.limits, state.limitModes, limitRules)) continue;
-		if (keyword && !matchKeyword(course, keyword, regexTargets, state.regexEnabled, state.matchCase)) continue;
+		if (keyword && !matchKeyword(course, keyword, quickTokens, regexTargets, state.regexEnabled, state.matchCase)) continue;
 
-		meta.set(course.id, courseMeta);
 		filtered.push(course);
 	}
 
-	const sorted = sortCourses(filtered, state.sortOptionId, selectionFiltersConfig);
+	const sorted = sortCourses(filtered, state.sortOptionId, state.sortOrder, selectionFiltersConfig);
 	return {
 		items: sorted,
-		meta,
+		meta: metaIndex,
 		total: sorted.length
 	};
 }
 
-function matchConflictMode(meta: CourseFilterMeta, mode: ConflictFilterMode) {
-	if (mode === 'any') return true;
-	const labels = meta.diagnostics.map((d) => d.label);
-	if (mode === 'no-conflict') return labels.length === 0;
-	if (mode === 'no-time-conflict') return !labels.includes('conflic');
-	if (mode === 'no-hard-conflict') return !labels.includes('weak-impossible');
-	if (mode === 'no-impossible') return !labels.includes('impossible');
-	return true;
+function getOrBuildCourseMetaIndex({
+	selectedIds,
+	selectedSchedule,
+	changeScope
+}: {
+	selectedIds: Set<string>;
+	selectedSchedule?: ScheduleSlot[];
+	changeScope?: CourseFilterContext['changeScope'];
+}) {
+	const scopeKey = String(changeScope ?? '');
+	const selectedKey = buildIdSetKey(selectedIds);
+	const scheduleKey = selectedSchedule ? buildScheduleCourseIdKey(selectedSchedule) : selectedKey;
+	const cacheKey = `${scopeKey}|sel:${selectedKey}|sched:${scheduleKey}`;
+	if (cachedCourseMeta?.key === cacheKey) return cachedCourseMeta.meta;
+
+	const schedule = selectedSchedule ?? buildScheduleIndex(selectedIds);
+	const meta = buildCourseMetaIndex({ selectedIds, schedule, changeScope });
+	cachedCourseMeta = { key: cacheKey, meta };
+	return meta;
 }
 
-function matchDisplayOption(
-	courseId: string,
-	option: CourseFilterState['displayOption'],
-	selected: Set<string>,
-	wishlist: Set<string>
+function buildIdSetKey(ids: Set<string>) {
+	return Array.from(ids).sort().join(',');
+}
+
+function buildScheduleCourseIdKey(schedule: ScheduleSlot[]) {
+	const ids = new Set<string>();
+	for (const slot of schedule) ids.add(slot.courseId);
+	return Array.from(ids).sort().join(',');
+}
+
+function buildCourseMetaIndex({
+	selectedIds,
+	schedule,
+	changeScope
+}: {
+	selectedIds: Set<string>;
+	schedule: ScheduleSlot[];
+	changeScope?: CourseFilterContext['changeScope'];
+}) {
+	const meta = new Map<string, CourseFilterMeta>();
+	const selectedGroupKeys = collectGroupKeys(selectedIds);
+	const selectedByGroupKey = buildSelectedByGroupKey(selectedIds);
+	const scheduleWithoutSelected = new Map<string, ScheduleSlot[]>();
+	for (const selectedId of selectedByGroupKey.values()) {
+		scheduleWithoutSelected.set(selectedId, schedule.filter((slot) => slot.courseId !== selectedId));
+	}
+
+	const currentScope = changeScope ?? null;
+	const treatCurrentAsHard = currentScope === 'FIX_SELECTED_SECTIONS' || currentScope === null;
+	const hardFeasibleCache = new Map<string, boolean>();
+	const softFeasibleCache = new Map<string, boolean>();
+
+	for (const course of courseCatalog) {
+		const groupKey = deriveGroupKey(course) as unknown as string;
+		const isSelected = selectedIds.has(course.id);
+		const hasSelectedInGroup = selectedGroupKeys.has(groupKey) && !isSelected;
+		const selectedInGroupId = selectedByGroupKey.get(groupKey) ?? null;
+		const scheduleForOverlap = selectedInGroupId ? scheduleWithoutSelected.get(selectedInGroupId) ?? schedule : schedule;
+		const overlaps = detectTimeConflicts(course, scheduleForOverlap);
+		const timeConflict = overlaps.length > 0;
+
+		const hardFeasible = resolveHardFeasible({
+			groupKey,
+			schedule: scheduleForOverlap,
+			cache: hardFeasibleCache
+		});
+		const hardImpossible = !hardFeasible;
+
+		const softFeasible = hardImpossible
+			? resolveSoftFeasible({
+					groupKey,
+					hasSelectedInGroup,
+					selectedByGroupKey,
+					schedule: scheduleForOverlap,
+					cache: softFeasibleCache
+			  })
+			: true;
+
+		const softTimeConflict = hardImpossible && softFeasible;
+		const softImpossible = hardImpossible && !softFeasible;
+		const hardTimeConflict = timeConflict && !hardImpossible;
+
+		const currentImpossible = currentScope === null ? false : treatCurrentAsHard ? hardImpossible : softImpossible;
+
+		const conflictTargets = overlaps;
+		const reasonOverlap = overlaps.length ? formatConflictTargets(overlaps) : undefined;
+		const diagnostics: CourseFilterMeta['diagnostics'] = [];
+		if (hardTimeConflict) {
+			diagnostics.push({ label: 'hard-time-conflict', reason: reasonOverlap });
+		} else if (hardImpossible) {
+			diagnostics.push({ label: 'hard-impossible', reason: reasonOverlap });
+			if (softTimeConflict) diagnostics.push({ label: 'soft-time-conflict', reason: reasonOverlap });
+			if (softImpossible) diagnostics.push({ label: 'soft-impossible', reason: reasonOverlap });
+		}
+
+		meta.set(course.id, {
+			conflict: timeConflict ? 'time-conflict' : 'none',
+			conflictTargets,
+			diagnostics,
+			timeConflict,
+			hardTimeConflict,
+			hardImpossible,
+			softTimeConflict,
+			softImpossible,
+			currentImpossible
+		});
+	}
+
+	return meta;
+}
+
+function isConflictItem(meta: CourseFilterMeta, mode: ConflictFilterMode, granularity: 'section' | 'group') {
+	switch (mode) {
+		case 'off':
+			return false;
+		case 'time':
+			return granularity === 'group' ? meta.hardImpossible : meta.timeConflict;
+		case 'current':
+			return meta.currentImpossible;
+		case 'hard':
+			return granularity === 'group' ? meta.hardImpossible : meta.hardTimeConflict || meta.hardImpossible;
+		case 'soft':
+			return granularity === 'group' ? meta.softImpossible : meta.softTimeConflict || meta.softImpossible;
+		default:
+			return false;
+	}
+}
+
+function matchStatusMode(
+	course: CourseCatalogEntry,
+	mode: CourseFilterState['statusMode'],
+	selectedIds: Set<string>,
+	wishlistIds: Set<string>,
+	selectedGroupKeys: Set<string>,
+	wishlistGroupKeys: Set<string>
 ) {
-	switch (option) {
-		case 'unselected':
-			return !selected.has(courseId) && !wishlist.has(courseId);
-		case 'selected':
-			return wishlist.has(courseId);
-		case 'all':
+	switch (mode) {
+		case 'all:no-status': {
+			if (selectedIds.has(course.id) || wishlistIds.has(course.id)) return false;
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return !wishlistGroupKeys.has(groupKey);
+		}
+		case 'all:orphan-selected': {
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return selectedIds.has(course.id) && !wishlistGroupKeys.has(groupKey);
+		}
+		case 'all:wishlist':
+			if (wishlistIds.has(course.id)) return true;
+			return wishlistGroupKeys.has(deriveGroupKey(course) as unknown as string);
+		case 'all:selected':
+			return selectedIds.has(course.id);
+		case 'wishlist:orphan': {
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return !selectedGroupKeys.has(groupKey);
+		}
+		case 'wishlist:has-selected': {
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return selectedGroupKeys.has(groupKey);
+		}
+		case 'selected:orphan': {
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return !wishlistGroupKeys.has(groupKey);
+		}
+		case 'selected:has-wishlist': {
+			const groupKey = deriveGroupKey(course) as unknown as string;
+			return wishlistGroupKeys.has(groupKey);
+		}
+		case 'all:none':
+		case 'wishlist:none':
+		case 'selected:none':
 		default:
 			return true;
 	}
@@ -152,6 +330,161 @@ function matchSimple(value: string, expected: string) {
 	const normalized = expected.trim();
 	if (!normalized) return true;
 	return value === normalized;
+}
+
+function normalizeCampusForFilter(value: string) {
+	const normalized = value.trim();
+	if (!normalized) return '';
+	if (normalized.includes('宝山主区') || normalized.includes('宝山东区')) return '宝山';
+	return normalized;
+}
+
+function matchCampus(value: string, expected: string) {
+	const normalizedExpected = expected.trim();
+	if (!normalizedExpected) return true;
+	return normalizeCampusForFilter(value) === normalizeCampusForFilter(normalizedExpected);
+}
+
+function collectGroupKeys(ids: Set<string>, extra?: Set<string>) {
+	const keys = new Set<string>();
+	for (const id of ids) {
+		const entry = courseCatalogMap.get(id);
+		if (!entry) continue;
+		keys.add(deriveGroupKey(entry) as unknown as string);
+	}
+	if (extra) {
+		for (const key of extra) keys.add(key);
+	}
+	return keys;
+}
+
+function buildSelectedByGroupKey(selectedIds: Set<string>) {
+	const map = new Map<string, string>();
+	for (const id of selectedIds) {
+		const entry = courseCatalogMap.get(id);
+		if (!entry) continue;
+		const key = deriveGroupKey(entry) as unknown as string;
+		if (!map.has(key)) map.set(key, id);
+	}
+	return map;
+}
+
+function resolveHardFeasible({
+	groupKey,
+	schedule,
+	cache
+}: {
+	groupKey: string;
+	schedule: ScheduleSlot[];
+	cache: Map<string, boolean>;
+}) {
+	if (cache.has(groupKey)) return cache.get(groupKey)!;
+	const entries = getGroupEntries(groupKey);
+	const feasible = entries.some((entry) => !hasTimeOverlap(entry, schedule));
+	cache.set(groupKey, feasible);
+	return feasible;
+}
+
+function resolveSoftFeasible({
+	groupKey,
+	hasSelectedInGroup,
+	selectedByGroupKey,
+	schedule,
+	cache
+}: {
+	groupKey: string;
+	hasSelectedInGroup: boolean;
+	selectedByGroupKey: Map<string, string>;
+	schedule: ScheduleSlot[];
+	cache: Map<string, boolean>;
+}) {
+	if (cache.has(groupKey)) return cache.get(groupKey)!;
+
+	const groupEntries = getGroupEntries(groupKey);
+	if (!groupEntries.length) {
+		cache.set(groupKey, false);
+		return false;
+	}
+
+	const adjustableGroupKeys = new Set<string>();
+	for (const entry of groupEntries) {
+		for (const targetId of detectTimeConflicts(entry, schedule)) {
+			const target = courseCatalogMap.get(targetId);
+			if (!target) continue;
+			adjustableGroupKeys.add(deriveGroupKey(target) as unknown as string);
+		}
+	}
+	if (hasSelectedInGroup) adjustableGroupKeys.add(groupKey);
+
+	const baselineSlots: ScheduleSlot[] = [];
+	for (const [selectedGroupKey, selectedId] of selectedByGroupKey.entries()) {
+		if (adjustableGroupKeys.has(selectedGroupKey)) continue;
+		const entry = courseCatalogMap.get(selectedId);
+		if (!entry) continue;
+		for (const chunk of entry.timeChunks) {
+			baselineSlots.push({
+				courseId: entry.id,
+				day: chunk.day,
+				startPeriod: chunk.startPeriod,
+				endPeriod: chunk.endPeriod,
+				weeks: chunk.weeks
+			});
+		}
+	}
+
+	const variableGroupKeys = new Set<string>(adjustableGroupKeys);
+	variableGroupKeys.add(groupKey);
+
+	const variables = Array.from(variableGroupKeys)
+		.map((key) => ({ key, domain: getGroupEntries(key) }))
+		.filter((item) => item.domain.length > 0)
+		.sort((a, b) => a.domain.length - b.domain.length);
+
+	const workingSlots = baselineSlots.slice();
+
+	function backtrack(index: number): boolean {
+		if (index >= variables.length) return true;
+		const variable = variables[index];
+		for (const candidate of variable.domain) {
+			if (hasTimeOverlap(candidate, workingSlots)) continue;
+			const pushed = pushScheduleSlots(candidate, workingSlots);
+			if (backtrack(index + 1)) return true;
+			workingSlots.splice(workingSlots.length - pushed, pushed);
+		}
+		return false;
+	}
+
+	const feasible = backtrack(0);
+	cache.set(groupKey, feasible);
+	return feasible;
+}
+
+function pushScheduleSlots(entry: CourseCatalogEntry, schedule: ScheduleSlot[]) {
+	let pushed = 0;
+	for (const chunk of entry.timeChunks) {
+		schedule.push({
+			courseId: entry.id,
+			day: chunk.day,
+			startPeriod: chunk.startPeriod,
+			endPeriod: chunk.endPeriod,
+			weeks: chunk.weeks
+		});
+		pushed += 1;
+	}
+	return pushed;
+}
+
+function hasTimeOverlap(entry: CourseCatalogEntry, schedule: ScheduleSlot[]) {
+	for (const chunk of entry.timeChunks) {
+		for (const slot of schedule) {
+			if (slot.courseId === entry.id) continue;
+			if (chunk.day !== slot.day) continue;
+			if (!periodsOverlap(chunk, slot)) continue;
+			if (!weeksOverlap(chunk.weeks, slot.weeks)) continue;
+			return true;
+		}
+	}
+	return false;
 }
 
 function matchCredit(credit: number, min: number | null, max: number | null) {
@@ -228,11 +561,13 @@ function matchLimitModes(
 function matchKeyword(
 	course: CourseCatalogEntry,
 	keyword: string,
+	quickTokens: CourseQuickQueryToken[],
 	targets: string[],
 	regexMode: boolean,
 	matchCase: boolean
 ) {
-	const texts = gatherKeywordTexts(course, targets);
+	const fields = gatherKeywordFields(course);
+	const texts = targets.map((target) => resolveKeywordField(fields, target));
 	if (regexMode) {
 		try {
 			const expr = new RegExp(keyword, matchCase ? '' : 'i');
@@ -241,48 +576,73 @@ function matchKeyword(
 			return true;
 		}
 	}
-	if (matchCase) {
-		return texts.some(text => text.includes(keyword));
-	}
-	const lowered = keyword.toLowerCase();
-	return texts.some(text => text.toLowerCase().includes(lowered));
+	if (!quickTokens.length) return true;
+	return quickTokens.every((token) => matchQuickToken(fields, token, matchCase));
 }
 
-function gatherKeywordTexts(course: CourseCatalogEntry, targets: string[]) {
-	return targets.map(target => {
-		switch (target) {
-			case 'title':
-				return course.title;
-			case 'teacher':
-				return course.teacher ?? '';
-			case 'note':
-				return course.selectionNote ?? '';
-			default:
-				return '';
-		}
-	});
+function gatherKeywordFields(course: CourseCatalogEntry) {
+	return {
+		courseCode: course.courseCode ?? '',
+		title: course.title ?? '',
+		teacher: course.teacher ?? '',
+		note: `${course.selectionNote ?? ''} ${course.note ?? ''}`.trim()
+	};
 }
 
-function sortCourses(
-	courses: CourseCatalogEntry[],
-	optionId: string,
-	config: typeof selectionFiltersConfig
+function resolveKeywordField(
+	fields: ReturnType<typeof gatherKeywordFields>,
+	target: string
 ) {
-	const option = config.sortOptions.find(item => item.id === optionId) ?? config.sortOptions[0];
-	if (!option) return courses;
-	return [...courses].sort((a, b) => {
-		for (const field of option.fields) {
-			const aValue = resolveSortField(a, field.field);
-			const bValue = resolveSortField(b, field.field);
-			if (aValue === bValue) continue;
-			if (aValue > bValue) {
-				return field.direction === 'asc' ? 1 : -1;
-			}
-			return field.direction === 'asc' ? -1 : 1;
-		}
-		return 0;
-	});
+	switch (target) {
+		case 'courseCode':
+			return fields.courseCode;
+		case 'title':
+			return fields.title;
+		case 'teacher':
+			return fields.teacher;
+		case 'note':
+			return fields.note;
+		default:
+			return '';
+	}
 }
+
+function matchQuickToken(texts: ReturnType<typeof gatherKeywordFields>, token: CourseQuickQueryToken, matchCase: boolean) {
+	const needle = token.value.trim();
+	if (!needle) return true;
+
+	const candidates =
+		token.kind === 'field'
+			? [texts[token.field]]
+			: [texts.courseCode, texts.title, texts.teacher, texts.note];
+
+	if (matchCase) return candidates.some((text) => text.includes(needle));
+	const loweredNeedle = needle.toLowerCase();
+	return candidates.some((text) => text.toLowerCase().includes(loweredNeedle));
+}
+
+	function sortCourses(
+		courses: CourseCatalogEntry[],
+		optionId: string,
+		sortOrder: CourseFilterState['sortOrder'],
+		config: typeof selectionFiltersConfig
+	) {
+		const option = config.sortOptions.find(item => item.id === optionId) ?? config.sortOptions[0];
+		if (!option) return courses;
+		const order = sortOrder === 'desc' ? -1 : 1;
+		return [...courses].sort((a, b) => {
+			for (const field of option.fields) {
+				const aValue = resolveSortField(a, field.field);
+				const bValue = resolveSortField(b, field.field);
+				if (aValue === bValue) continue;
+				if (aValue > bValue) {
+					return (field.direction === 'asc' ? 1 : -1) * order;
+				}
+				return (field.direction === 'asc' ? -1 : 1) * order;
+			}
+			return 0;
+		});
+	}
 
 function resolveSortField(course: CourseCatalogEntry, field: SortField) {
 	switch (field) {

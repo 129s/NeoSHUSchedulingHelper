@@ -53,7 +53,7 @@ function goTo(page: number) {
 		<span>{t('filters.jump')}</span>
 		<input
 			type="number"
-			class="w-20 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-2 py-1 text-center"
+			class="w-20 rounded-[var(--app-radius-md)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] px-2 py-1 text-center"
 			min="1"
 			max={totalPages}
 			value={currentPage}

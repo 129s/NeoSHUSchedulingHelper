@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { translator } from "$lib/i18n";
   import {
     orderedWorkspacePanels,
@@ -29,6 +30,18 @@
 
   $: activeDescriptionKey = descriptionKeyMap[activePanel] ?? null;
   $: ActiveComponent = workspacePanels[activePanel];
+
+  onMount(() => {
+    const onFocusRequest = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { panelId?: WorkspacePanelType } | undefined;
+      const panelId = detail?.panelId;
+      if (!panelId) return;
+      activePanel = panelId;
+    };
+
+    window.addEventListener('workspace:focus', onFocusRequest as EventListener);
+    return () => window.removeEventListener('workspace:focus', onFocusRequest as EventListener);
+  });
 </script>
 
 <DockPanelShell class="h-full min-h-0 flex flex-col gap-4" scrollable={true}>
@@ -58,7 +71,7 @@
       <span class="text-[var(--app-color-fg-muted)]">{t('layout.workspace.compactSelectLabel')}</span>
       <select
         bind:value={activePanel}
-        class="rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-md)]"
+        class="rounded-[var(--app-radius-md)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-md)]"
       >
         {#each orderedWorkspacePanels as panelId}
           <option value={panelId}>{panelTitles[panelId]}</option>

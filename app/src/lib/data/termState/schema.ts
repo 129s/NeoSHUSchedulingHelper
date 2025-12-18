@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TermState } from './types';
+import { courseCatalogMap } from '../catalog/courseCatalog';
 
 const zEpochMs = z.number().int().nonnegative();
 
@@ -149,12 +150,66 @@ const zTermState = z.object({
 			selected: z.literal('sectionOnly'),
 			jwxt: z.literal('sectionOnly')
 		}),
-		courseListPolicy: z.enum([
-			'ONLY_OK_NO_RESCHEDULE',
-			'ALLOW_OK_WITH_RESELECT',
-			'DIAGNOSTIC_SHOW_IMPOSSIBLE',
-			'NO_CHECK'
-		]),
+		homeCampus: z.string().nullable().optional(),
+		selectionMode: z
+			.enum(['allowOverflowMode', 'overflowSpeedRaceMode'])
+			.nullable()
+			.optional(),
+		autoSolveEnabled: z.boolean().optional(),
+		autoSolveBackup: z
+			.object({
+				at: zEpochMs,
+				selection: z.object({
+					selected: z.array(z.string()),
+					wishlistSections: z.array(z.string()),
+					wishlistGroups: z.array(z.string()),
+					selectedSig: z.string()
+				}),
+				solver: z.object({
+					staging: z.array(
+						z.union([
+							z.object({ kind: z.literal('group'), key: z.string() }),
+							z.object({ kind: z.literal('section'), key: z.string() })
+						])
+					)
+				}),
+				ui: z
+					.object({
+						collapseCoursesByName: z.boolean()
+					})
+					.optional()
+					.default({ collapseCoursesByName: true })
+			})
+			.nullable()
+			.optional()
+			.default(null),
+		autoSolveTimeSoft: z
+			.object({
+				avoidEarlyWeight: z.number().finite().nonnegative(),
+				avoidLateWeight: z.number().finite().nonnegative()
+			})
+			.optional()
+			.default({ avoidEarlyWeight: 0, avoidLateWeight: 0 }),
+			courseListPolicy: z.enum([
+				'ONLY_OK_NO_RESCHEDULE',
+				'ALLOW_OK_WITH_RESELECT',
+				'DIAGNOSTIC_SHOW_IMPOSSIBLE',
+				'NO_CHECK'
+			]).optional().default('ALLOW_OK_WITH_RESELECT'),
+		pagination: z
+			.object({
+				mode: z.enum(['paged', 'continuous']).optional().default('paged'),
+				pageSize: z.number().int().positive().optional().default(50),
+				pageNeighbors: z.number().int().positive().optional().default(4)
+			})
+			.optional()
+			.default({ mode: 'paged', pageSize: 50, pageNeighbors: 4 }),
+		calendar: z
+			.object({
+				showWeekends: z.boolean().optional().default(false)
+			})
+			.optional()
+			.default({ showWeekends: false }),
 		jwxt: z.object({
 			autoSyncEnabled: z.boolean(),
 			autoSyncIntervalSec: z.number().int().positive(),
@@ -165,5 +220,36 @@ const zTermState = z.object({
 });
 
 export function parseTermState(raw: unknown): TermState {
-	return zTermState.parse(raw) as unknown as TermState;
+	const parsed = zTermState.parse(raw) as any;
+	const candidate = typeof parsed?.settings?.homeCampus === 'string' ? parsed.settings.homeCampus : '';
+	if (!candidate.trim()) {
+		parsed.settings.homeCampus = suggestDefaultHomeCampus();
+	}
+	if (parsed?.settings?.selectionMode === undefined) {
+		parsed.settings.selectionMode = null;
+	}
+	if (parsed?.settings?.autoSolveEnabled === undefined) {
+		parsed.settings.autoSolveEnabled = false;
+	}
+	if (parsed?.settings?.autoSolveBackup === undefined) {
+		parsed.settings.autoSolveBackup = null;
+	}
+	if (parsed?.settings?.autoSolveTimeSoft === undefined) {
+		parsed.settings.autoSolveTimeSoft = { avoidEarlyWeight: 0, avoidLateWeight: 0 };
+	}
+	return parsed as TermState;
+}
+
+function suggestDefaultHomeCampus(): string {
+	const campuses = new Set<string>();
+	for (const entry of courseCatalogMap.values()) {
+		const campus = (entry.campus ?? '').trim();
+		if (campus) campuses.add(campus);
+	}
+	const list = Array.from(campuses).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+	if (!list.length) return '宝山';
+	const baoshanMain = list.find((campus) => campus.includes('宝山主区'));
+	if (baoshanMain) return baoshanMain;
+	const baoshanAny = list.find((campus) => campus.includes('宝山'));
+	return baoshanAny ?? list[0] ?? '宝山';
 }

@@ -17,7 +17,7 @@
 	$: placeholderText = placeholder ?? t('searchBar.placeholder');
 
 	const baseClass =
-		'flex items-center gap-2 rounded-[var(--app-radius-pill)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] text-[var(--app-text-sm)] text-[var(--app-color-fg)] shadow-[0_0_0_0_rgba(0,0,0,0)] transition-all duration-150 focus-within:border-[color:var(--app-color-primary)] focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--app-color-primary)_20%,transparent)] focus-within:text-[var(--app-color-fg)]';
+		'flex items-center gap-2 rounded-[var(--app-radius-pill)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] text-[var(--app-text-sm)] text-[var(--app-color-fg)] shadow-[0_0_0_0_rgba(0,0,0,0)] transition-all duration-150 focus-within:border-[color:var(--app-color-primary)] focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--app-color-primary)_20%,transparent)] focus-within:text-[var(--app-color-fg)]';
 
 	const sizeClass: Record<Size, string> = {
 		default: 'min-h-[40px] px-4 py-2',

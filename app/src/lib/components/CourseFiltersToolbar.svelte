@@ -1,22 +1,28 @@
 <script lang="ts">
 	import type { Writable } from 'svelte/store';
 	import type { CourseFilterState, CourseFilterOptions, ConflictFilterMode } from '$lib/stores/courseFilters';
-import FilterBar from '$lib/components/FilterBar.svelte';
-import Chip from '$lib/components/Chip.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
+	import Chip from '$lib/components/Chip.svelte';
 	import ChipGroup from '$lib/components/ChipGroup.svelte';
 	import AppField from '$lib/primitives/AppField.svelte';
 	import AppButton from '$lib/primitives/AppButton.svelte';
 	import AppControlRow from '$lib/primitives/AppControlRow.svelte';
 	import { translator } from '$lib/i18n';
 	import type { LimitMode, LimitRuleKey } from '../../config/selectionFilters';
+	import { hideFilterStatusControl } from '$lib/stores/courseDisplaySettings';
+	import { crossCampusAllowed, homeCampus } from '$lib/stores/coursePreferences';
 
 export let filters: Writable<CourseFilterState>;
 export let options: CourseFilterOptions;
 export let mode: 'all' | 'wishlist' | 'selected' = 'all';
+export let statusModeScope: 'auto' | 'none' | 'all' | 'wishlist' | 'selected' | 'jwxt' = 'auto';
+export let hasOrphanSelected: boolean | null = null;
+export let lockConflictMode: ConflictFilterMode | null = null;
 
 	let showAdvanced = false;
 let showLangMode = false;
 let showWeekFold = false;
+	let appliedDefaultCampus = false;
 
 	let t = (key: string) => key;
 	$: t = $translator;
@@ -24,19 +30,13 @@ let showWeekFold = false;
 	const parityOptionValues = ['any', 'odd', 'even', 'all'] as const;
 	const spanOptionValues = ['any', 'upper', 'lower', 'full'] as const;
 
-	const conflictOptionValues: ConflictFilterMode[] = [
-		'any',
-		'no-conflict',
-		'no-time-conflict',
-		'no-hard-conflict',
-		'no-impossible'
-	];
+	const conflictOptionValues: ConflictFilterMode[] = ['time', 'current', 'hard', 'soft'];
 	const conflictLabelKey: Record<ConflictFilterMode, string> = {
-		any: 'filters.conflictOptions.any',
-		'no-conflict': 'filters.conflictOptions.noAnyConflict',
-		'no-time-conflict': 'filters.conflictOptions.noTimeConflict',
-		'no-hard-conflict': 'filters.conflictOptions.noHardConstraintConflict',
-		'no-impossible': 'filters.conflictOptions.noUnavoidableConflict'
+		off: 'filters.conflictJudgeOptions.off',
+		time: 'filters.conflictJudgeOptions.time',
+		current: 'filters.conflictJudgeOptions.current',
+		hard: 'filters.conflictJudgeOptions.hard',
+		soft: 'filters.conflictJudgeOptions.soft'
 	};
 
 	const controlClass =
@@ -49,23 +49,73 @@ let showWeekFold = false;
 				? t('filters.viewModes.selected')
 				: t('filters.viewModes.all');
 
-	$: displayOptionChoices =
-		mode === 'selected'
+	$: effectiveStatusModeScope = statusModeScope === 'auto' ? mode : statusModeScope;
+
+	$: statusModeChoices =
+		effectiveStatusModeScope === 'none'
+			? []
+			: effectiveStatusModeScope === 'all'
 			? [
-					{ value: 'all', label: t('filters.displayOptions.all') },
-					{ value: 'unselected', label: t('filters.displayOptions.selectedPending') },
-					{ value: 'selected', label: t('filters.displayOptions.selectedChosen') }
+					{ value: 'all:none', label: t('filters.statusModes.all.none') },
+					{ value: 'all:no-status', label: t('filters.statusModes.all.noStatus') },
+					{ value: 'all:wishlist', label: t('filters.statusModes.all.wishlist') },
+					{ value: 'all:selected', label: t('filters.statusModes.all.selected') }
 			  ]
-			: [
-					{ value: 'all', label: t('filters.displayOptions.all') },
-					{ value: 'unselected', label: t('filters.displayOptions.wishlistPending') },
-					{ value: 'selected', label: t('filters.displayOptions.wishlistSelected') }
-			  ];
+			: effectiveStatusModeScope === 'jwxt'
+				? [
+						{ value: 'all:none', label: t('filters.statusModes.all.none') },
+						{ value: 'all:no-status', label: t('filters.statusModes.all.noStatus') },
+						{ value: 'all:selected', label: t('filters.statusModes.all.selected') },
+						{ value: 'all:orphan-selected', label: t('filters.statusModes.all.orphanSelected') }
+				  ]
+			: effectiveStatusModeScope === 'wishlist'
+				? [
+						{ value: 'wishlist:none', label: t('filters.statusModes.wishlist.none') },
+						{ value: 'wishlist:has-selected', label: t('filters.statusModes.wishlist.hasSelected') }
+				  ]
+				: (() => {
+						const showOrphan = hasOrphanSelected ?? true;
+						const base = [
+							{ value: 'selected:none', label: t('filters.statusModes.selected.none') },
+							{ value: 'selected:has-wishlist', label: t('filters.statusModes.selected.hasWishlist') }
+						];
+						return showOrphan
+							? base.concat([{ value: 'selected:orphan', label: t('filters.statusModes.selected.orphan') }])
+							: base;
+				  })();
+
+	$: {
+		if (effectiveStatusModeScope === 'none') {
+			if ($filters.statusMode !== 'all:none') {
+				filters.update((current) => ({ ...current, statusMode: 'all:none' }));
+			}
+		} else if (statusModeChoices.length) {
+			const allowed = new Set(statusModeChoices.map((choice) => choice.value));
+			if (!allowed.has($filters.statusMode as any)) {
+				filters.update((current) => ({ ...current, statusMode: statusModeChoices[0]?.value as any }));
+			}
+		}
+	}
 
 	$: conflictOptions = conflictOptionValues.map((value) => ({
 		value,
 		label: t(conflictLabelKey[value])
 	}));
+
+	$: if (lockConflictMode && $filters.conflictMode !== lockConflictMode) {
+		filters.update((current) => ({ ...current, conflictMode: lockConflictMode }));
+	}
+
+	// Default to home campus on first render, but do not override explicit user changes later.
+	$: if (!appliedDefaultCampus && !$filters.campus.trim() && $homeCampus.trim()) {
+		appliedDefaultCampus = true;
+		filters.update((current) => ({ ...current, campus: $homeCampus }));
+	}
+
+	// When cross-campus is disabled, lock campus filter to home campus.
+	$: if (!$crossCampusAllowed && $homeCampus.trim() && $filters.campus.trim() !== $homeCampus.trim()) {
+		filters.update((current) => ({ ...current, campus: $homeCampus }));
+	}
 
 	$: languageSummary =
 		$filters.teachingLanguage.length
@@ -126,14 +176,21 @@ let showWeekFold = false;
 		label: t(`filters.weekSpanOptions.${value}`)
 	}));
 
-	function updateFilter<K extends keyof CourseFilterState>(key: K, value: CourseFilterState[K]) {
-		filters.update((current) => ({ ...current, [key]: value }));
-	}
+		function updateFilter<K extends keyof CourseFilterState>(key: K, value: CourseFilterState[K]) {
+			filters.update((current) => ({ ...current, [key]: value }));
+		}
 
-	function toggleAdvanced() {
-		showAdvanced = !showAdvanced;
-	}
-</script>
+		function toggleSortOrder() {
+			updateFilter('sortOrder', $filters.sortOrder === 'asc' ? 'desc' : 'asc');
+		}
+
+		$: sortOrderLabel = $filters.sortOrder === 'asc' ? t('filters.sortOrderAsc') : t('filters.sortOrderDesc');
+		$: sortOrderToggleLabel = `${t('filters.sort')}: ${sortOrderLabel}`;
+
+		function toggleAdvanced() {
+			showAdvanced = !showAdvanced;
+		}
+	</script>
 
 <FilterBar>
 	<svelte:fragment slot="mode">
@@ -150,19 +207,19 @@ let showWeekFold = false;
 				class={`${controlClass} w-full`}
 				type="search"
 				placeholder={t('filters.searchPlaceholder')}
+				title={t('filters.searchHelp')}
 				value={$filters.keyword}
-				disabled={showAdvanced}
 				on:input={(e) => updateFilter('keyword', (e.currentTarget as HTMLInputElement).value)}
 			/>
 		</AppField>
 	</svelte:fragment>
 
 	<svelte:fragment slot="chips">
-		<div class="flex flex-wrap gap-2">
-			<Chip selectable selected={$filters.regexEnabled} disabled={showAdvanced} on:click={() => updateFilter('regexEnabled', !$filters.regexEnabled)}>
+		<div class="chip-row flex flex-wrap gap-2">
+			<Chip selectable selected={$filters.regexEnabled} on:click={() => updateFilter('regexEnabled', !$filters.regexEnabled)}>
 				{t('filters.regex')}
 			</Chip>
-			<Chip selectable selected={$filters.matchCase} disabled={showAdvanced} on:click={() => updateFilter('matchCase', !$filters.matchCase)}>
+			<Chip selectable selected={$filters.matchCase} on:click={() => updateFilter('matchCase', !$filters.matchCase)}>
 				{t('filters.caseSensitive')}
 			</Chip>
 			<Chip
@@ -180,46 +237,86 @@ let showWeekFold = false;
 		</div>
 	</svelte:fragment>
 
-	<svelte:fragment slot="settings">
-		<AppControlRow>
-			<AppField label={t('filters.sort')} class="flex-1 min-w-[200px]">
-				<select
-					class={`${controlClass} w-full`}
-					value={$filters.sortOptionId}
-					on:change={(e) => updateFilter('sortOptionId', (e.currentTarget as HTMLSelectElement).value)}
-				>
-					{#each options.sortOptions as opt}
-						<option value={opt.id}>{opt.label}</option>
-					{/each}
-				</select>
-			</AppField>
-		</AppControlRow>
-	</svelte:fragment>
+		<svelte:fragment slot="settings">
+			<AppControlRow>
+				<AppField label={t('filters.sort')} class="flex-1 min-w-[min(220px,100%)] w-auto">
+					<div class="flex items-center gap-2">
+						<select
+							class={`${controlClass} flex-1 min-w-0`}
+							value={$filters.sortOptionId}
+							on:change={(e) => updateFilter('sortOptionId', (e.currentTarget as HTMLSelectElement).value)}
+						>
+							{#each options.sortOptions as opt}
+								<option value={opt.id}>{opt.label}</option>
+							{/each}
+						</select>
+						<AppButton
+							variant="secondary"
+							size="sm"
+							iconOnly
+							title={sortOrderToggleLabel}
+							aria-label={sortOrderToggleLabel}
+							on:click={toggleSortOrder}
+						>
+							{$filters.sortOrder === 'asc' ? '↑' : '↓'}
+						</AppButton>
+					</div>
+				</AppField>
+			</AppControlRow>
+		</svelte:fragment>
 
 	<svelte:fragment slot="view-controls">
-		<AppControlRow class="w-full">
-			<AppField label={t('filters.status')} class="min-w-[160px]">
+		<AppControlRow class="w-full items-end">
+			{#if !$hideFilterStatusControl && effectiveStatusModeScope !== 'none' && statusModeChoices.length}
+				<AppField label={t('filters.status')} class="flex-1 min-w-[min(220px,100%)] w-auto">
+					<select
+						class={`${controlClass} w-full`}
+						value={$filters.statusMode}
+						on:change={(e) => updateFilter('statusMode', (e.currentTarget as HTMLSelectElement).value as any)}
+					>
+						{#each statusModeChoices as opt (opt.value)}
+							<option value={opt.value}>{opt.label}</option>
+						{/each}
+					</select>
+				</AppField>
+			{/if}
+			{#if $crossCampusAllowed}
+				<AppField label={t('filters.campus')} class="flex-1 min-w-[min(220px,100%)] w-auto">
+					<select
+						class={`${controlClass} w-full`}
+						value={$filters.campus}
+						on:change={(e) => updateFilter('campus', (e.currentTarget as HTMLSelectElement).value)}
+					>
+						<option value="">{t('filters.displayOptions.all')}</option>
+						{#each options.campuses as campus}
+							<option value={campus}>{campus}</option>
+						{/each}
+					</select>
+				</AppField>
+			{/if}
+			<AppField label={t('filters.conflict')} class="flex-1 min-w-[min(220px,100%)] w-auto">
 				<select
-					class={controlClass}
-					value={$filters.displayOption}
-					on:change={(e) => updateFilter('displayOption', (e.currentTarget as HTMLSelectElement).value as any)}
-				>
-					{#each displayOptionChoices as opt (opt.value)}
-						<option value={opt.value}>{opt.label}</option>
-					{/each}
-				</select>
-			</AppField>
-			<AppField label={t('filters.conflict')} class="min-w-[160px]">
-				<select
-					class={controlClass}
-					value={$filters.conflictMode}
-					on:change={(e) => updateFilter('conflictMode', (e.currentTarget as HTMLSelectElement).value as ConflictFilterMode)}
+					class={`${controlClass} w-full`}
+					disabled={Boolean(lockConflictMode)}
+					value={lockConflictMode ?? $filters.conflictMode}
+					on:change={(e) => {
+						if (lockConflictMode) return;
+						updateFilter('conflictMode', (e.currentTarget as HTMLSelectElement).value as ConflictFilterMode);
+					}}
 				>
 					{#each conflictOptions as opt (opt.value)}
 						<option value={opt.value}>{opt.label}</option>
 					{/each}
 				</select>
 			</AppField>
+			<Chip
+				selectable
+				selected={$filters.showConflictBadges}
+				class="flex-[0_0_auto]"
+				on:click={() => updateFilter('showConflictBadges', !$filters.showConflictBadges)}
+			>
+				{t('filters.showConflictBadges')}
+			</Chip>
 		</AppControlRow>
 	</svelte:fragment>
 
@@ -251,16 +348,24 @@ let showWeekFold = false;
 
 			<div class="grid gap-3 sm:grid-cols-2">
 				<AppField label={t('filters.campus')}>
-					<select
-						class={controlClass}
-						value={$filters.campus}
-						on:change={(e) => updateFilter('campus', (e.currentTarget as HTMLSelectElement).value)}
-					>
-						<option value="">{t('filters.displayOptions.all')}</option>
-						{#each options.campuses as campus}
-							<option value={campus}>{campus}</option>
-						{/each}
-					</select>
+					<div title={!$crossCampusAllowed ? t('filters.campusLockedHint') : undefined}>
+						<select
+							disabled={!$crossCampusAllowed}
+							class={`${controlClass} ${!$crossCampusAllowed ? 'cursor-not-allowed opacity-60' : ''}`}
+							value={$filters.campus}
+							on:change={(e) => updateFilter('campus', (e.currentTarget as HTMLSelectElement).value)}
+						>
+							<option value="">{t('filters.displayOptions.all')}</option>
+							{#each options.campuses as campus}
+								<option value={campus}>{campus}</option>
+							{/each}
+						</select>
+					</div>
+					{#if !$crossCampusAllowed}
+						<div class="mt-1 text-[var(--app-text-xs)] text-[var(--app-color-fg-muted)]">
+							{t('filters.campusLockedHint')}
+						</div>
+					{/if}
 				</AppField>
 				<AppField label={t('filters.college')}>
 					<select
@@ -271,18 +376,6 @@ let showWeekFold = false;
 						<option value="">{t('filters.displayOptions.all')}</option>
 						{#each options.colleges as college}
 							<option value={college}>{college}</option>
-						{/each}
-					</select>
-				</AppField>
-				<AppField label={t('filters.major')}>
-					<select
-						class={controlClass}
-						value={$filters.major}
-						on:change={(e) => updateFilter('major', (e.currentTarget as HTMLSelectElement).value)}
-					>
-						<option value="">{t('filters.displayOptions.all')}</option>
-						{#each options.majors as major}
-							<option value={major}>{major}</option>
 						{/each}
 					</select>
 				</AppField>
@@ -447,9 +540,8 @@ let showWeekFold = false;
 {/if}
 
 <style>
-	:global(.filter-field input),
-	:global(.filter-field select),
-	:global(.filter-field textarea) {
+	:global(.filter-field) input,
+	:global(.filter-field) select {
 		min-width: 0;
 	}
 
@@ -459,10 +551,20 @@ let showWeekFold = false;
 			width: 100%;
 		}
 
-		:global(.filter-field input),
-		:global(.filter-field select),
-		:global(.filter-field textarea) {
+		:global(.filter-field) input,
+		:global(.filter-field) select {
 			width: 100%;
+		}
+	}
+
+	@container panel-shell (max-width: 520px) {
+		.chip-row {
+			width: 100%;
+		}
+
+		.chip-row :global(button) {
+			flex: 1 1 160px;
+			justify-content: center;
 		}
 	}
 </style>

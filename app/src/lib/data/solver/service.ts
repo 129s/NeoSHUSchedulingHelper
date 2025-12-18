@@ -1,9 +1,9 @@
-import { ConstraintBuilder } from './constraintBuilder';
+import { ConstraintBuilder, type SectionFacts, buildStaticHardConstraints } from './constraintBuilder';
 import type { DesiredState } from '../desired/types';
 import type { SelectionMatrixState } from '../selectionMatrix';
 import type { InsaneCourseData, CourseRecord, SectionEntry } from '../InsaneCourseData';
 import { Z3Solver } from './Z3Solver';
-import type { ConstraintSolver } from './ConstraintSolver';
+import type { ConstraintSolver, HardConstraint } from './ConstraintSolver';
 import type { ManualUpdate, ManualUpdateResult } from '../manualUpdates';
 import { deepClone } from '../utils/clone';
 import type { SolverResultRecord, SolverRunMetrics } from './resultTypes';
@@ -17,6 +17,9 @@ export interface SolveDesiredConfig {
 	desired: DesiredState;
 	selection: SelectionMatrixState;
 	solver?: ConstraintSolver;
+	candidateSectionIds?: string[];
+	vacancyPolicy?: 'IGNORE_VACANCY' | 'REQUIRE_VACANCY';
+	baselineHard?: HardConstraint[];
 	resultId?: string;
 	note?: string;
 	persist?: boolean;
@@ -30,20 +33,45 @@ export interface SolveDesiredOutput {
 }
 
 export async function solveDesiredWithPlan(config: SolveDesiredConfig): Promise<SolveDesiredOutput> {
-	const solver = config.solver ?? new Z3Solver();
+	const solver = config.solver ?? getSharedSolver();
 	await solver.init();
 	const effectiveTermId = config.termId ?? config.data.meta.semester ?? resolveTermId();
-	const sectionIndex = buildSectionIndex(config.data);
-	const sectionIds = Array.from(sectionIndex.keys());
-	const builder = new ConstraintBuilder(config.desired, sectionIds);
-	const model = builder.build();
+	const selectionInfo = collectSelectionInfo(config.selection);
+	const pinnedSectionIds = new Set(selectionInfo.keys());
+	const sectionIndex = buildSectionIndex(config.data, config.candidateSectionIds);
+	const sectionFacts = buildSectionFacts(config.data, config.candidateSectionIds);
+	const baseKey = getSectionFactsBaseKey(sectionFacts);
+	const baseModel = ensureBaseConstraintModel(sectionFacts, baseKey);
+
+	const builder = new ConstraintBuilder(config.desired, sectionFacts);
+	const model = builder.build({ includeStaticHard: false, variables: baseModel.variables });
+
+	if (config.vacancyPolicy === 'REQUIRE_VACANCY') {
+		appendVacancyConstraints(model.hard, sectionIndex, pinnedSectionIds);
+	}
+	if (config.baselineHard?.length) {
+		model.hard.push(...config.baselineHard);
+	}
 	const startedAt = now();
-	const solverResult = await solver.solve(model);
+	const solverResult =
+		solver instanceof Z3Solver
+			? await solver.solveWithBase({
+					variables: baseModel.variables,
+					baseHard: baseModel.baseHard,
+					baseKey: baseModel.key,
+					hard: model.hard,
+					soft: model.soft
+			  })
+			: await solver.solve({
+					variables: baseModel.variables,
+					hard: baseModel.baseHard.concat(model.hard),
+					soft: model.soft
+			  });
 	const elapsedMs = Math.round(now() - startedAt);
 
 	const metrics: SolverRunMetrics = {
-		variables: model.variables.length,
-		hard: model.hard.length,
+		variables: baseModel.variables.length,
+		hard: baseModel.baseHard.length + model.hard.length,
 		soft: model.soft.length,
 		elapsedMs
 	};
@@ -142,11 +170,38 @@ export function applySolverResultPlan({
 	});
 }
 
-function buildSectionIndex(data: InsaneCourseData) {
-	const index = new Map<
-		string,
-		{ courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }
-	>();
+let sharedSolver: Z3Solver | null = null;
+
+function getSharedSolver() {
+	if (!sharedSolver) sharedSolver = new Z3Solver();
+	return sharedSolver;
+}
+
+let cachedIndexSource: InsaneCourseData | null = null;
+let cachedFullSectionIndex:
+	| Map<string, { courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }>
+	| null = null;
+let cachedFullSectionFacts: Map<string, SectionFacts> | null = null;
+let cachedSubsetKey: string | null = null;
+let cachedSubsetSectionIndex:
+	| Map<string, { courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }>
+	| null = null;
+let cachedSubsetSectionFacts: Map<string, SectionFacts> | null = null;
+
+type BaseConstraintModel = {
+	key: string;
+	variables: { id: string; tags?: string[] }[];
+	baseHard: HardConstraint[];
+};
+
+let cachedBaseSourceFacts: Map<string, SectionFacts> | null = null;
+let cachedBaseModel: BaseConstraintModel | null = null;
+const sectionFactsKeyByMap = new WeakMap<Map<string, SectionFacts>, number>();
+let sectionFactsKeySeq = 1;
+
+function ensureFullSectionIndex(data: InsaneCourseData) {
+	if (cachedIndexSource === data && cachedFullSectionIndex) return cachedFullSectionIndex;
+	const index = new Map<string, { courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }>();
 	for (const course of data.courses) {
 		for (const section of course.sections) {
 			if (!section.sectionId) continue;
@@ -158,7 +213,149 @@ function buildSectionIndex(data: InsaneCourseData) {
 			});
 		}
 	}
+	cachedIndexSource = data;
+	cachedFullSectionIndex = index;
+	cachedFullSectionFacts = null;
 	return index;
+}
+
+function buildSectionIndex(data: InsaneCourseData, candidateSectionIds?: string[]) {
+	const full = ensureFullSectionIndex(data);
+	if (!candidateSectionIds?.length) return full;
+	const key = buildCandidateKey(candidateSectionIds);
+	if (cachedIndexSource === data && cachedSubsetKey === key && cachedSubsetSectionIndex) return cachedSubsetSectionIndex;
+	const index = new Map<string, { courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }>();
+	for (const sectionId of candidateSectionIds) {
+		const row = full.get(sectionId);
+		if (row) index.set(sectionId, row);
+	}
+	cachedSubsetKey = key;
+	cachedSubsetSectionIndex = index;
+	cachedSubsetSectionFacts = null;
+	return index;
+}
+
+function ensureFullSectionFacts(data: InsaneCourseData) {
+	if (cachedIndexSource === data && cachedFullSectionFacts) return cachedFullSectionFacts;
+	const index = ensureFullSectionIndex(data);
+	const map = new Map<string, SectionFacts>();
+	const normalizeString = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+	const normalizeStringList = (value: unknown) =>
+		Array.isArray(value) ? value.map((item) => normalizeString(item)).filter(Boolean).join(',') : '';
+
+		for (const [sectionId, info] of index.entries()) {
+			const teacherIds = Array.from(
+				new Set((info.section.teachers ?? []).map((t) => t.teacherId).filter(Boolean))
+			);
+			const timeChunks = (info.section.scheduleChunks ?? [])
+				.map((chunk) => ({
+					day: chunk.day,
+					startPeriod: chunk.startPeriod,
+					endPeriod: chunk.endPeriod,
+					weeks: chunk.weeks
+				}))
+				.filter(
+					(chunk) => Number.isFinite(chunk.day) && Number.isFinite(chunk.startPeriod) && Number.isFinite(chunk.endPeriod)
+				);
+
+		const groupKey = [
+			normalizeString(info.course.courseCode),
+			normalizeString(info.course.campus),
+			normalizeString(info.course.teachingLanguage),
+			normalizeStringList(info.course.specialType),
+			normalizeString(info.course.selectionNote),
+			normalizeString(info.course.classStatus)
+		].join('|');
+
+		map.set(sectionId, {
+			sectionId,
+			courseHash: info.courseHash,
+			groupKey,
+			campus: info.course.campus,
+			teacherIds,
+			timeChunks
+		});
+	}
+	cachedIndexSource = data;
+	cachedFullSectionIndex = index;
+	cachedFullSectionFacts = map;
+	return map;
+}
+
+function buildSectionFacts(data: InsaneCourseData, candidateSectionIds?: string[]): Map<string, SectionFacts> {
+	const full = ensureFullSectionFacts(data);
+	if (!candidateSectionIds?.length) return full;
+	const key = buildCandidateKey(candidateSectionIds);
+	if (cachedIndexSource === data && cachedSubsetKey === key && cachedSubsetSectionFacts) return cachedSubsetSectionFacts;
+	const map = new Map<string, SectionFacts>();
+	for (const sectionId of candidateSectionIds) {
+		const row = full.get(sectionId);
+		if (row) map.set(sectionId, row);
+	}
+	cachedSubsetKey = key;
+	cachedSubsetSectionFacts = map;
+	return map;
+}
+
+function ensureBaseConstraintModel(sections: Map<string, SectionFacts>, key: string): BaseConstraintModel {
+	if (cachedBaseSourceFacts === sections && cachedBaseModel) return cachedBaseModel;
+	const variables = Array.from(sections.keys()).map((sectionId) => ({ id: sectionId }));
+	const baseHard = buildStaticHardConstraints(sections);
+	cachedBaseSourceFacts = sections;
+	cachedBaseModel = { key, variables, baseHard };
+	return cachedBaseModel;
+}
+
+function getSectionFactsBaseKey(sections: Map<string, SectionFacts>) {
+	const existing = sectionFactsKeyByMap.get(sections);
+	if (existing) return `facts:${existing}`;
+	const next = sectionFactsKeySeq++;
+	sectionFactsKeyByMap.set(sections, next);
+	return `facts:${next}`;
+}
+
+function buildCandidateKey(candidateSectionIds: string[]) {
+	const normalized = isSorted(candidateSectionIds) ? candidateSectionIds : [...candidateSectionIds].sort();
+	let hash1 = 2166136261;
+	let hash2 = 16777619;
+	for (const id of normalized) {
+		for (let i = 0; i < id.length; i += 1) {
+			const code = id.charCodeAt(i);
+			hash1 ^= code;
+			hash1 = Math.imul(hash1, 16777619);
+			hash2 ^= code;
+			hash2 = Math.imul(hash2, 2166136261);
+		}
+		hash1 ^= 124; // '|'
+		hash1 = Math.imul(hash1, 16777619);
+		hash2 ^= 124;
+		hash2 = Math.imul(hash2, 2166136261);
+	}
+	return `${normalized.length}:${(hash1 >>> 0).toString(16)}:${(hash2 >>> 0).toString(16)}`;
+}
+
+function isSorted(items: string[]) {
+	for (let i = 1; i < items.length; i += 1) {
+		if (items[i - 1]! > items[i]!) return false;
+	}
+	return true;
+}
+
+function appendVacancyConstraints(
+	hard: HardConstraint[],
+	index: Map<string, { courseHash: string; courseCode: string; section: SectionEntry; course: CourseRecord }>,
+	pinnedSectionIds: Set<string>
+) {
+	for (const [sectionId, info] of index.entries()) {
+		if (pinnedSectionIds.has(sectionId)) continue;
+		const vacancy = Number(info.course.vacancy);
+		const capacity = Number(info.course.capacity);
+		if (!Number.isFinite(vacancy) || !Number.isFinite(capacity)) continue;
+		const remaining = vacancy >= 0 ? vacancy : Math.max(capacity - Math.abs(vacancy), 0);
+		if (remaining <= 0) {
+			hard.push({ type: 'require', variable: sectionId, value: false });
+		}
+	}
 }
 
 function generatePlanFromAssignment({

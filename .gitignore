@@ -19,3 +19,9 @@ PLAN.md
 QWERTY.md
 
 docs/*.md
+
+.amazonq/
+.claude/
+.codex/
+.qwen/
+.specify/

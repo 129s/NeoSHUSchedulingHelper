@@ -13,6 +13,6 @@
 	<AppInitializer />
 
 	<section class="flex flex-1 min-h-0" aria-label={t('common.dockTitle')}>
-		<DockIDE className="flex-1 rounded-[var(--app-radius-xl)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] p-3 shadow-[var(--app-shadow-hard)]" />
+		<DockIDE className="flex-1 rounded-[var(--app-radius-xl)] bg-[var(--app-color-bg)] p-3 shadow-[var(--app-shadow-hard)]" />
 	</section>
 </main>

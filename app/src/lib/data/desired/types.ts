@@ -20,6 +20,7 @@ export interface TimeWindow {
 }
 
 export type HardLockType = 'course' | 'section' | 'teacher' | 'time' | 'group';
+export type LockDirection = 'desire' | 'avoid';
 
 export interface DesiredLock {
 	id: string;
@@ -36,6 +37,7 @@ export interface DesiredLock {
 	includeSections?: string[];
 	excludeSections?: string[];
 	priority: 'hard' | 'soft';
+	direction?: LockDirection;
 	note?: string;
 }
 
@@ -45,6 +47,10 @@ export interface SoftConstraint {
 		| 'avoid-early'
 		| 'avoid-late'
 		| 'avoid-campus'
+		| 'avoid-group'
+		| 'avoid-section'
+		| 'prefer-group'
+		| 'prefer-section'
 		| 'limit-consecutive'
 		| 'max-per-day'
 		| 'custom';

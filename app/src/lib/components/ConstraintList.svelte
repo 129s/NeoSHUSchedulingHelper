@@ -188,7 +188,7 @@ $: dict = $dictionaryStore as Dictionary;
 	<div class="w-full min-w-0">
 		<input
 			type="search"
-			class="w-full min-w-0 max-w-[420px] rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)] placeholder:text-[var(--app-color-fg-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-color-primary)] focus:ring-offset-1 focus:ring-offset-[color:var(--app-color-bg)]"
+			class="w-full min-w-0 max-w-[420px] rounded-[var(--app-radius-md)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)] placeholder:text-[var(--app-color-fg-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-color-primary)] focus:ring-offset-1 focus:ring-offset-[color:var(--app-color-bg)]"
 			placeholder={resolvedSearchPlaceholder}
 			bind:value={query}
 			aria-label={resolvedSearchPlaceholder}

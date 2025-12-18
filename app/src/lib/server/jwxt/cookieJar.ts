@@ -17,6 +17,26 @@ export class CookieJar {
 		bucket.set(name, value);
 	}
 
+	importCookieHeader(hostname: string, cookieHeader: string) {
+		const parts = cookieHeader
+			.split(';')
+			.map((part) => part.trim())
+			.filter(Boolean);
+		for (const part of parts) {
+			const eq = part.indexOf('=');
+			if (eq <= 0) continue;
+			const name = part.slice(0, eq).trim();
+			const value = part.slice(eq + 1).trim();
+			if (!name) continue;
+			let bucket = this.store.get(hostname);
+			if (!bucket) {
+				bucket = new Map();
+				this.store.set(hostname, bucket);
+			}
+			bucket.set(name, value);
+		}
+	}
+
 	updateFromResponse(response: Response) {
 		const hostname = new URL(response.url).hostname;
 		const setCookies = ((response.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ??

@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { CookieJar } from './cookieJar';
+import type { JwxtRoundTab, JwxtSelectOption } from './selectionContext';
 
 export type JwxtSession = {
 	id: string;
@@ -9,6 +10,11 @@ export type JwxtSession = {
 	jar: CookieJar;
 	context?: Record<string, string>;
 	fields?: Record<string, string>;
+	selectedXkkzId?: string;
+	roundTabs?: JwxtRoundTab[];
+	activeXkkzId?: string | null;
+	currentXkkzId?: string | null;
+	campusOptions?: JwxtSelectOption[];
 };
 
 const sessions = new Map<string, JwxtSession>();

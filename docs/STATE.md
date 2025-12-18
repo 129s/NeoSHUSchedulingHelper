@@ -121,21 +121,33 @@ interface termState {
     checkpoints: Array<{ atIndex:number; stateMd5: Md5 }>;
   };
 
-  settings: {
-    granularity: {
-      allCourses: "groupPreferred" | "sectionOnly";   // 默认 groupPreferred
-      candidates: "groupPreferred" | "sectionOnly";   // 默认 groupPreferred
-      solver: "groupPreferred" | "sectionOnly";       // 默认 groupPreferred
-      selected: "sectionOnly";                        // 固定
-      jwxt: "sectionOnly";                            // 固定
-    };
+	  settings: {
+	    granularity: {
+	      allCourses: "groupPreferred" | "sectionOnly";   // 默认 groupPreferred
+	      candidates: "groupPreferred" | "sectionOnly";   // 默认 groupPreferred
+	      solver: "groupPreferred" | "sectionOnly";       // 默认 groupPreferred
+	      selected: "sectionOnly";                        // 固定
+	      jwxt: "sectionOnly";                            // 固定
+	    };
+	    homeCampus: string;                // 常驻校区（必填）
 
-    // 课程列表可选性策略（由四态 Availability + policy 决定按钮是否可点）
-    courseListPolicy:
-      | "ONLY_OK_NO_RESCHEDULE"
+	    // 课程列表可选性策略（由四态 Availability + policy 决定按钮是否可点）
+	    courseListPolicy:
+	      | "ONLY_OK_NO_RESCHEDULE"
       | "ALLOW_OK_WITH_RESELECT"
       | "DIAGNOSTIC_SHOW_IMPOSSIBLE"
       | "NO_CHECK";
+
+	    // 课程列表分页/渐进渲染设置（用于控制 DOM 上限与性能）
+	    pagination: {
+	      mode: "paged" | "continuous";
+	      pageSize: number;        // 默认 50
+	      pageNeighbors: number;   // 默认 4（continuous 下渲染 activePage±neighbors）
+	    };
+
+	    calendar: {
+	      showWeekends: boolean;   // 默认 false
+	    };
 
     jwxt: {
       autoSyncEnabled: boolean;
@@ -156,7 +168,7 @@ interface termState {
 
 1. `selected` 仅 EntryId。
 2. **同组最多一个 selected** ：同一 GroupKey 下 `selected` 最多 1 个。
-3. **离开 Selected 必补 Wishlist** ：任何删除/换班次导致某组从 selected 消失，都必须在 wishlistGroups+wishlistSections 留下锚点（默认：两者都留）。
+3. **Wishlist 语义（收藏夹）**：wishlist 是显式收藏（可选），不作为 “Selected 自动锚点”；`wishlistSections` 允许与 `selected` 重叠（收藏不因选上/退课而自动变化）。
 4. 去重 + 排序稳定：commit 时统一 canonicalize（去重、稳定排序），然后计算 `selectedSig`。
 
 ## 3.2 GroupKey resolve（fatal/降级）
@@ -293,30 +305,31 @@ Effect 完成后必须回派 ResultAction（例如 `JWXT_PULL_OK/ERR`），Resul
 
 ### 顶部批量条（必须有）
 
+* 按钮：`全选` / `全部取消`
 * 选择框：`批量操作`
   * `选上`（对选中的 section / group）
   * `移除`（降级到 ALL）
-  * `发送到求解器`（只添加到 solver.staging，不落 constraints）
+  * `导入到求解器`（只添加到 solver.staging，不落 constraints）
 * 按钮1：执行
-* 按钮2：取消选择
+* 按钮2：取消选择 / 全部取消
 
 ### GroupCard
 
 * **按钮1（主）** ：`选上`
 * dispatch：`SEL_PROMOTE_GROUP(WISHLIST→SELECTED)`
-* **必弹窗 D-SEL-1** （手动选班次 / 去 Solver 自动模式）
+* **必弹窗 D-SEL-1** （手动选班次）
 * **按钮2（次）** ：`移除` → `SEL_DEMOTE_GROUP(WISHLIST→ALL)`
 * **选择框（More）** ：
-* `发送到求解器（staging）` → `SOL_STAGING_ADD(group)`
+* `导入到求解器（staging）` → `SOL_STAGING_ADD(group)`
 * `在求解器中打开`（UI effect：focus solver）
 * `展开班次`（UI）
 
 ### SectionCard
 
-* **按钮1** ：`选上` → `SEL_PROMOTE_SECTION(WISHLIST→SELECTED)`
-* **按钮2** ：`移除` → `SEL_DEMOTE_SECTION(WISHLIST→ALL)`
+* **按钮1** ：`选上` → `SEL_PROMOTE_SECTION(WISHLIST→SELECTED)`（不会自动取消收藏）
+* **按钮2** ：`移除` → `SEL_UNWISHLIST_SECTION`
 * **选择框** ：
-* `发送到求解器（staging）` → `SOL_STAGING_ADD(section)`
+* `导入到求解器（staging）` → `SOL_STAGING_ADD(section)`
 * `在求解器中打开`（UI effect）
 
 ### removeAll
@@ -332,13 +345,12 @@ Effect 完成后必须回派 ResultAction（例如 `JWXT_PULL_OK/ERR`），Resul
 
 ### SectionCard
 
-* **按钮1（主）** ：`退选`（降级）
-* dispatch：`SEL_DEMOTE_SECTION(SELECTED→WISHLIST)`
-* validate 强制补 wishlist 锚点（两者都补）
+* **按钮1（主）** ：`退课`（取消选课/移出已选）
+* dispatch：`SEL_DROP_SELECTED_SECTION`（不会自动写入 wishlist，也不会取消已收藏）
 * **按钮2（次）** ：`重选`
-* dispatch：SectionPicker → `SEL_RESELECT_WITHIN_GROUP`
+* dispatch：`SEL_RESELECT_WITHIN_GROUP`（UI 可直接在课程组展开列表内点选）
 * **选择框**
-  * `发送到求解器（staging）` → `SOL_STAGING_ADD(section)`
+  * `导入到求解器（staging）` → `SOL_STAGING_ADD(section)`
   * `在求解器中锁定此班次`（只做 UI 预填：打开 solver 并选中“生成 includeEntry lock”的编辑器，不直接写约束；真正落盘仍在 solver 面板点确认）
 
 ---
@@ -482,9 +494,9 @@ Remote Snapshot 列表每条 card：
 * selected：固定 sectionOnly（不可改）
 * jwxt：固定 sectionOnly（不可改）
 
-2. **courseListPolicy** （默认最严格）
+2. **courseListPolicy** （默认：允许可重排）
 
-* ONLY_OK_NO_RESCHEDULE（默认）
+* ONLY_OK_NO_RESCHEDULE
 * ALLOW_OK_WITH_RESELECT
 * DIAGNOSTIC_SHOW_IMPOSSIBLE
 * NO_CHECK
@@ -502,6 +514,23 @@ Remote Snapshot 列表每条 card：
 * autoPreviewEnabled（默认 true）
 * autoPushEnabled（默认 false；若 true，必须满足：存在 pushTicket 且 ttl=120 且用户之前显式允许静默推送
 
+5. **autoSolve（自动模式）**
+
+* autoSolveEnabled（默认 false）
+* 语义：
+  * 自动模式入口在 **Candidates / Selected** 面板（两个按钮状态一致）
+  * 自动模式开启时，UI 必须强制进入“课程组折叠模式”（按组展示），以避免用户把自动目标当作“班次列表”误操作
+  * 自动编排只处理 `selection.wishlistGroups`（课程组）；不直接处理 wishlistSections（班次）
+  * 自动编排默认 **不改动** 既有 selected：仅当某个课程组也在 `wishlistGroups`（被用户显式作为自动目标）时，才允许在该组内换班次；`solver.changeScope=FIX_SELECTED_SECTIONS` 时即使是目标组也必须保持当前班次
+  * 使用内置求解生成编排计划并应用（仍需走 dispatch/effect，不允许 UI 旁路写 selection）
+  * 必须尊重全局 `settings.selectionMode`（顺位排序 / 先到先得）：
+    * allowOverflowMode：顺位排序，自动编排允许把无空余班次编排进解
+    * overflowSpeedRaceMode：先到先得，**禁用自动模式**（避免误导性自动编排）
+  * **切换合同** ：开启自动模式时保存一份“进入前手动快照”（selection + solver.staging）；关闭自动模式时：
+    * 若存在快照 → 必须弹 `D-AUTO-2` 询问“恢复并退出 / 仅退出 / 取消”
+    * 若不存在快照 → 执行一次“导出为班次解”（自动编排 replace-all）；SAT 后再退出；UNSAT/错误则保持自动模式并提示
+  * **选课模式切换** ：当 `autoSolveEnabled=true` 且用户切换为 `overflowSpeedRaceMode`（先到先得）时，必须先走退出流程（`D-AUTO-2`），退出成功后再写入新的 selectionMode；取消则保持自动模式并不切换 selectionMode
+
 
 ---
 
@@ -511,7 +540,7 @@ Remote Snapshot 列表每条 card：
 
 ---
 
-## D-SEL-1：Wishlist 的 Group → Selected（必须手动 pick 或去 Solver）
+## D-SEL-1：Wishlist 的 Group → Selected（必须手动 pick）
 
  **触发** ：`SEL_PROMOTE_GROUP(...→SELECTED)` 且该组存在多个可选 section。
  **标题** ：`请选择班次`
@@ -522,18 +551,10 @@ Remote Snapshot 列表每条 card：
 
  **按钮（仅两个）** ：
 
-1. **手动选择班次…** （主）
+1. **取消** （次）
+2. **确认选上** （主）→ dispatch：`SEL_PROMOTE_SECTION(WISHLIST→SELECTED, entryId)`
 
-* 打开 SectionPicker（仍属于该弹窗）
-* 选择后 dispatch：`SEL_PROMOTE_SECTION(WISHLIST→SELECTED, entryId)`
-
-1. **交给求解器（切换到 Solver）** （次）
-
-* dispatch：`SOL_STAGING_ADD(group)`
-* UI effect：focus solver 面板
-* 不自动求解（用户在 solver 点“求解”）
-
-默认焦点：按钮1，但不自动选班次。
+默认焦点：确认按钮，但不自动选班次。
 
 ---
 
@@ -549,6 +570,34 @@ Remote Snapshot 列表每条 card：
 * 在同一事务里：先删除约束，再清空 wishlist（写一个 history entry）
 
 1. **取消** （次）
+
+---
+
+## D-AUTO-1：自动求解设置（Candidates / Selected 共用）
+
+**触发**：Candidates / Selected 面板点击“自动求解设置”按钮（UI-only，不写 TermState）。
+
+**内容**：
+- 说明自动模式只处理 wishlistGroups，并使用内置求解生成编排计划
+- 展示并允许切换 autoSolveEnabled（通过 `SETTINGS_UPDATE`；先到先得模式下禁用）
+- 展示并允许设置“时间段软约束”（仅影响自动编排）：
+  - avoidEarlyWeight：尽量避开第 1-2 节
+  - avoidLateWeight：尽量避开第 11 节及以后
+- 提供“立即自动编排”按钮：dispatch `AUTO_SOLVE_RUN`（由 effect 计算并应用 plan）
+
+---
+
+## D-AUTO-2：退出自动模式（恢复手动快照）
+
+**触发** ：用户关闭 autoSolveEnabled，且存在进入自动模式前保存的快照。
+
+**内容** ：提示“恢复并退出会覆盖当前已选/待选”，并展示快照概览（数量即可）。
+
+**按钮（3 个）**：
+
+1. 取消（保持自动模式）
+2. 仅退出（保留当前状态，清理快照）
+3. 恢复并退出（恢复快照 selection + solver.staging，清理快照）
 
 ---
 
@@ -730,16 +779,25 @@ Remote Snapshot 列表每条 card：
   * reselectCourseFromList → dispatch SEL_RESELECT_WITHIN_GROUP（先 UI pick）
   * toggleGroup → UI-only
 * **candidates**
-  * selectFromWishlist → SEL_PROMOTE_SECTION / SEL_PROMOTE_GROUP（group 必弹 D-SEL-1）
+  * autoMode（autoSolveEnabled=true）下，“选课/取消选课”是**对课程组做标记**（`selection.wishlistGroups`），用于自动编排目标；不要求用户在此处挑班次
+  * selectFromWishlist → SEL_PROMOTE_SECTION（手动点选班次进入 selected；仍可能触发 DUPLICATE_GROUP_SELECTED 校验）
+  * selectGroupInAutoMode → SEL_PROMOTE_GROUP(to:"wishlist") / SEL_DEMOTE_GROUP(to:"all")（仅切换 `wishlistGroups` 标记；不应隐式清空该组下 `wishlistSections`）；推荐在“加入目标”后自动触发 AUTO_SOLVE_RUN 以即时更新编排（无解应禁用或提示）
   * reselectFromWishlist → SEL_RESELECT_WITHIN_GROUP
-  * removeCourse → SEL_DEMOTE_SECTION
+  * removeCourse → SEL_UNWISHLIST_SECTION
   * removeGroup → SEL_DEMOTE_GROUP
   * removeAll → SEL_CLEAR_WISHLIST（必弹 D-SEL-2 如有依赖）
   * toggleGroup/toggleVariantList → UI-only
+  * autoModeToggle → SETTINGS_UPDATE({ autoSolveEnabled })（先到先得禁用；关闭时若有快照则弹 D-AUTO-2；若无快照则导出后退出）
+  * autoSolveSettings → UI-only open D-AUTO-1
+  * autoSolveRunNow → AUTO_SOLVE_RUN
 * **selected**
+  * dropSelected → SEL_DROP_SELECTED_SECTION
   * deselectCourse → SEL_DEMOTE_SECTION(SELECTED→WISHLIST)
   * reselectCourse → SEL_RESELECT_WITHIN_GROUP
   * toggleGroup → UI-only
+  * autoModeToggle → SETTINGS_UPDATE({ autoSolveEnabled })（先到先得禁用；关闭时若有快照则弹 D-AUTO-2；若无快照则导出后退出）
+  * autoSolveSettings → UI-only open D-AUTO-1
+  * autoSolveRunNow → AUTO_SOLVE_RUN
 * **solver**
   * handleAddLock/removeLock → SOL_CONSTRAINT_ADD/REMOVE
   * handleAddSoft/removeSoft → SOL_SOFT_ADD/REMOVE

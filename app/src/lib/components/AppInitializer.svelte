@@ -8,13 +8,20 @@
 		termState,
 		termStateAlert
 	} from '$lib/stores/termStateStore';
-	import SelectionModePrompt from './SelectionModePrompt.svelte';
+	import { collapseCoursesByName } from '$lib/stores/courseDisplaySettings';
 	import JwxtAutoPushManager from './JwxtAutoPushManager.svelte';
 	import AppDialog from '$lib/primitives/AppDialog.svelte';
 	import AppButton from '$lib/primitives/AppButton.svelte';
 	import { translator, type TranslateFn } from '$lib/i18n';
+	import { requestWorkspacePanelFocus } from '$lib/utils/workspaceFocus';
+	import SetupWizard from './SetupWizard.svelte';
+	import { setupWizardDone } from '$lib/stores/setupWizard';
+	import { hasStoredJwxtCookieVault } from '$lib/stores/jwxtCookieVault';
+	import { hasStoredJwxtCookieDeviceVault } from '$lib/stores/jwxtCookieDeviceVault';
 
-	let showPrompt = false;
+	let wizardOpen = false;
+	let wizardSuppressed = false;
+	let prevWizardOpen = false;
 	let alertOpen = false;
 	let groupPickEntryId: string | null = null;
 	let datasetFatalOpen = false;
@@ -24,21 +31,38 @@
 	$: alertOpen = Boolean($termStateAlert);
 	$: datasetFatalOpen = Boolean($termState?.dataset.fatalResolve);
 	$: if ($termStateAlert?.kind !== 'SEL_PICK_SECTION') groupPickEntryId = null;
+	$: {
+		const blocked = alertOpen || datasetFatalOpen;
+		const hasLocalJwxtCookie = hasStoredJwxtCookieVault() || hasStoredJwxtCookieDeviceVault();
+		const termReady = Boolean($termState);
+		const shouldPrompt =
+			termReady && ($selectionModeNeedsPrompt || (!$setupWizardDone && !hasLocalJwxtCookie));
+
+		if (!shouldPrompt) {
+			wizardSuppressed = false;
+		} else if (prevWizardOpen && !wizardOpen && !blocked) {
+			// User closed the wizard while it was still needed. Suppress auto-reopen until
+			// the underlying condition is cleared (e.g. selectionMode update finishes).
+			wizardSuppressed = true;
+		}
+		prevWizardOpen = wizardOpen;
+
+		// Important: <SetupWizard bind:open> is a two-way binding. If we derive `wizardOpen` directly from
+		// stores here, it may forcibly close the wizard mid-flow when the user completes a step
+		// (e.g. after setting selection mode). Instead, we open it when needed and only force-close
+		// when another blocking dialog is present.
+		if (blocked) {
+			wizardOpen = false;
+			wizardSuppressed = false;
+		} else if (shouldPrompt && !wizardOpen) {
+			if (!wizardSuppressed) wizardOpen = true;
+		}
+	}
+	$: if (($termState?.settings.autoSolveEnabled ?? false) && !$collapseCoursesByName) collapseCoursesByName.set(true);
 
 	onMount(() => {
 		void ensureTermStateLoaded();
-		const unsubscribe = selectionModeNeedsPrompt.subscribe((needsPrompt) => {
-			showPrompt = needsPrompt;
-		});
-
-		return () => {
-			unsubscribe();
-		};
 	});
-
-	function handleClose() {
-		showPrompt = false;
-	}
 
 	function handleSwitchToSectionOnly() {
 		void dispatchTermAction({ type: 'DATASET_RESOLVE_SWITCH_SECTION_ONLY' });
@@ -74,9 +98,43 @@
 			clearTermStateAlert()
 		);
 	}
+
+	function closeAutoSolveExitConfirm() {
+		clearTermStateAlert();
+	}
+
+	async function handleAutoSolveExitKeep() {
+		const collapseBefore = $termState?.settings.autoSolveBackup?.ui?.collapseCoursesByName ?? null;
+		const after =
+			$termStateAlert?.kind === 'AUTO_SOLVE_EXIT_CONFIRM' ? ($termStateAlert.after ?? null) : null;
+		try {
+			const result = await dispatchTermAction({ type: 'AUTO_SOLVE_EXIT_KEEP' });
+			if (result.ok && after) await dispatchTermAction(after);
+		} finally {
+			if (collapseBefore !== null) collapseCoursesByName.set(Boolean(collapseBefore));
+			clearTermStateAlert();
+		}
+	}
+
+	async function handleAutoSolveExitRestore() {
+		const collapseBefore = $termState?.settings.autoSolveBackup?.ui?.collapseCoursesByName ?? null;
+		const after =
+			$termStateAlert?.kind === 'AUTO_SOLVE_EXIT_CONFIRM' ? ($termStateAlert.after ?? null) : null;
+		try {
+			const result = await dispatchTermAction({ type: 'AUTO_SOLVE_EXIT_RESTORE' });
+			if (result.ok && after) await dispatchTermAction(after);
+		} finally {
+			if (collapseBefore !== null) collapseCoursesByName.set(Boolean(collapseBefore));
+			clearTermStateAlert();
+		}
+	}
+
+	function closeAutoSolveExitFailed() {
+		clearTermStateAlert();
+	}
 </script>
 
-<SelectionModePrompt open={showPrompt} onClose={handleClose} />
+<SetupWizard bind:open={wizardOpen} />
 <JwxtAutoPushManager />
 
 {#if $termState?.dataset.fatalResolve}
@@ -131,11 +189,11 @@
 	</AppDialog>
 {/if}
 
-{#if $termStateAlert?.kind === 'SEL_PICK_SECTION'}
-	{@const options = $termStateAlert.options}
-	{@const selectedId = groupPickEntryId ?? options[0]?.entryId ?? ''}
-	<AppDialog open={alertOpen} title={t('dialogs.groupPick.title')} on:close={closeGroupPick}>
-		<p class="m-0 text-[var(--app-color-fg-muted)]">{t('dialogs.groupPick.hint')}</p>
+	{#if $termStateAlert?.kind === 'SEL_PICK_SECTION'}
+		{@const options = $termStateAlert.options}
+		{@const selectedId = groupPickEntryId ?? options[0]?.entryId ?? ''}
+		<AppDialog open={alertOpen} title={t('dialogs.groupPick.title')} on:close={closeGroupPick}>
+			<p class="m-0 text-[var(--app-color-fg-muted)]">{t('dialogs.groupPick.hint')}</p>
 
 		<div class="flex flex-col gap-2">
 			{#each options as option (option.entryId)}
@@ -159,13 +217,57 @@
 			{/each}
 		</div>
 
-		<svelte:fragment slot="actions">
-			<AppButton variant="secondary" size="sm" on:click={closeGroupPick}>
-				{t('dialogs.groupPick.cancel')}
-			</AppButton>
-			<AppButton variant="primary" size="sm" on:click={confirmGroupPick}>
-				{t('dialogs.groupPick.confirm')}
-			</AppButton>
-		</svelte:fragment>
-	</AppDialog>
-{/if}
+			<svelte:fragment slot="actions">
+				<AppButton variant="secondary" size="sm" on:click={closeGroupPick}>
+					{t('dialogs.groupPick.cancel')}
+				</AppButton>
+				<AppButton variant="primary" size="sm" on:click={confirmGroupPick}>
+					{t('dialogs.groupPick.confirm')}
+				</AppButton>
+			</svelte:fragment>
+		</AppDialog>
+	{/if}
+
+	{#if $termStateAlert?.kind === 'AUTO_SOLVE_EXIT_CONFIRM'}
+		{@const backup = $termState?.settings.autoSolveBackup}
+		{@const selectedCount = backup?.selection.selected.length ?? 0}
+		{@const wishlistSectionCount = backup?.selection.wishlistSections.length ?? 0}
+		{@const wishlistGroupCount = backup?.selection.wishlistGroups.length ?? 0}
+		<AppDialog open={alertOpen} title={t('dialogs.autoSolveExit.title')} on:close={closeAutoSolveExitConfirm}>
+			<p class="m-0">
+				{t('dialogs.autoSolveExit.summary', {
+					selected: selectedCount,
+					wishlistSections: wishlistSectionCount,
+					wishlistGroups: wishlistGroupCount
+				})}
+			</p>
+			<p class="m-0 text-[var(--app-color-fg-muted)]">{t('dialogs.autoSolveExit.hint')}</p>
+
+			<svelte:fragment slot="actions">
+				<AppButton variant="secondary" size="sm" on:click={closeAutoSolveExitConfirm}>
+					{t('dialogs.autoSolveExit.cancel')}
+				</AppButton>
+				<AppButton variant="secondary" size="sm" on:click={handleAutoSolveExitKeep}>
+					{t('dialogs.autoSolveExit.keep')}
+				</AppButton>
+				<AppButton variant="primary" size="sm" on:click={handleAutoSolveExitRestore}>
+					{t('dialogs.autoSolveExit.restore')}
+				</AppButton>
+			</svelte:fragment>
+		</AppDialog>
+	{/if}
+
+	{#if $termStateAlert?.kind === 'AUTO_SOLVE_EXIT_FAILED'}
+		<AppDialog open={alertOpen} title={t('dialogs.autoSolveExitFailed.title')} on:close={closeAutoSolveExitFailed}>
+			<p class="m-0">{t('dialogs.autoSolveExitFailed.summary')}</p>
+			<p class="m-0 text-[var(--app-color-fg-muted)]">
+				{t('dialogs.autoSolveExitFailed.errorLabel')}{' '}{($termStateAlert.error ?? '').slice(0, 800)}
+			</p>
+
+			<svelte:fragment slot="actions">
+				<AppButton variant="primary" size="sm" on:click={closeAutoSolveExitFailed}>
+					{t('dialogs.autoSolveExitFailed.ack')}
+				</AppButton>
+			</svelte:fragment>
+		</AppDialog>
+	{/if}

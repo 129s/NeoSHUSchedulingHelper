@@ -4,7 +4,8 @@
 Describe the shared filter experience used by All/Selected/Candidate/Solver/Diagnostics panels. Filters consume `<FilterBar>` and `--app-*` tokens only, integrate with solver intents, and avoid bespoke SCSS.
 
 ## Modes
-1. **Simple section**: search field (course name/code/teacher), inline controls, and quick chips (mode, status, conflict, campus, language). Always visible, even when advanced drawer is open.
+1. **Simple section**: search field (course name/code/teacher/note), inline controls, and quick chips (mode, status, conflict, campus, language). Always visible, even when advanced drawer is open.
+   - Search accepts multiple terms split by whitespace/punctuation; terms are combined with AND. Each term matches any of the fields above (OR). Optional field prefixes like `teacher:` / `code:` / `name:` / `note:` are supported for narrowing.
 2. **Advanced section**: collapsible drawer containing detailed fields (course code/name, teacher name/ID, teaching language, exception courses (unselectable/closed), special tags (dataset-derived, non-hardcoded), sports-only toggle, campus, college, major, credit min/max, week parity/span grid). Drawer slides inside the FilterBar container without hiding the simple chips.
 
 ## Shared Layout Rules
@@ -21,10 +22,17 @@ Describe the shared filter experience used by All/Selected/Candidate/Solver/Diag
 ## Controls
 
 ### Simple Mode Chips
-- **Conflict**: 全部 / 时间冲突 / 硬冲突.
+- **冲突模式（Conflict mode）**：判定“哪些条目算冲突项目”的运行模式（不直接筛选）。
+  - `time`：时间冲突
+  - `current`：当前不可调课选（结合 `termState.solver.changeScope`）
+  - `hard`：硬约束不可调课选
+  - `soft`：软约束不可调课选
+- **显示冲突项目**（独立开关，控制列表纯净与展示）：关闭时隐藏冲突项目；开启时显示冲突项目并渲染 badge/popover（由 `meta.diagnostics` 驱动）。
 - **Status**:
-  - All/Candidate panels: 全部 / 待选 / 已选.
-  - Selected panel: 全部 / 已提交 / 待提交.
+  - AllCourses panel: 不提供 Status 控件（“全部就是全部”）。
+  - Candidate (Wishlist) panel: 不筛选 / 只看同组已选.
+  - Selected panel: 不筛选 / 只看同组待选（wishlistGroups+wishlistSections）/（当存在 orphan 已选时）只看 orphan 已选（同组无待选：wishlistGroups+wishlistSections）.
+  - JWXT enroll panel: 不筛选 / 无状态设置 / 只看已选 / 只看 orphan 已选.
 - **Teaching language**: 中文 / 全英 / 双语 / 未指定.
 - **Special (sports)**: 仅体育 / 排除体育.
 - **Campus**: multi-select chips from dataset.

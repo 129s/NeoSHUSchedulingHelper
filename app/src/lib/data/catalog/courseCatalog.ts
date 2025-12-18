@@ -16,6 +16,8 @@ import type { CourseTaxonomyInfo } from '../../types/taxonomy';
 import { resolveCourseTaxonomy } from './courseTaxonomy';
 import { initializeTaxonomyRegistry } from '../taxonomy/taxonomyRegistry';
 import { t } from '../../i18n/index.ts';
+import { browser } from '$app/environment';
+import { readCloudSnapshot } from './cloudSnapshot';
 
 const datasetConfig = getDatasetConfig();
 
@@ -25,9 +27,34 @@ const RAW_SNAPSHOT_MODULES = import.meta.glob('../../../../../crawler/data/terms
 });
 
 function resolveRawSnapshot(termId: string): RawCourseSnapshot {
+	if (browser) {
+		const cloud = readCloudSnapshot(termId);
+		if (cloud) return cloud;
+	}
 	const suffix = `/crawler/data/terms/${termId}.json`;
 	for (const [path, value] of Object.entries(RAW_SNAPSHOT_MODULES)) {
 		if (path.endsWith(suffix)) return value as RawCourseSnapshot;
+	}
+	// If the app is configured with a termCode (e.g. `2025-16`), allow matching
+	// round-specific snapshots `terms/<termCode>--xkkz-<id>.json`.
+	const roundPrefix = `/crawler/data/terms/${termId}--xkkz-`;
+	const candidates: Array<{ snapshot: RawCourseSnapshot; xklc: number; updatedAt: number }> = [];
+	for (const [path, value] of Object.entries(RAW_SNAPSHOT_MODULES)) {
+		if (!path.includes(roundPrefix)) continue;
+		const snapshot = value as RawCourseSnapshot;
+		const xklcRaw = String((snapshot as any)?.jwxtRound?.xklc ?? '').trim();
+		const xklcNum = Number.parseInt(xklcRaw || '0', 10);
+		const updatedAt =
+			typeof (snapshot as any)?.updateTimeMs === 'number' ? (snapshot as any).updateTimeMs : 0;
+		candidates.push({
+			snapshot,
+			xklc: Number.isFinite(xklcNum) ? xklcNum : 0,
+			updatedAt
+		});
+	}
+	if (candidates.length) {
+		candidates.sort((a, b) => (b.xklc - a.xklc) || (b.updatedAt - a.updatedAt));
+		return candidates[0]!.snapshot;
 	}
 	throw new Error(`未找到学期 ${termId} 的原始快照文件（期望路径后缀：${suffix}）`);
 }

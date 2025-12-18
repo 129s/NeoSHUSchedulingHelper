@@ -2,7 +2,6 @@ import { writable, type Writable } from 'svelte/store';
 import { t } from '../i18n';
 import {
 	getSelectionFiltersConfig,
-	type DisplayOptionId,
 	type LimitMode,
 	type LimitRuleKey,
 	type SelectionFiltersConfig
@@ -10,7 +9,24 @@ import {
 import { courseCatalog } from '../data/catalog/courseCatalog';
 import { getTaxonomyOptions } from '../data/taxonomy/taxonomyRegistry';
 
-export type ConflictFilterMode = 'any' | 'no-conflict' | 'no-time-conflict' | 'no-hard-conflict' | 'no-impossible';
+// Conflict mode is a runtime judgement mode (not a list filter):
+// it defines what counts as a “conflict item” for badges/purity toggle.
+export type ConflictFilterMode = 'off' | 'time' | 'current' | 'hard' | 'soft';
+
+export type CourseStatusMode =
+	| 'all:none'
+	| 'all:no-status'
+	| 'all:wishlist'
+	| 'all:selected'
+	| 'all:orphan-selected'
+	| 'wishlist:none'
+	| 'wishlist:orphan'
+	| 'wishlist:has-selected'
+	| 'selected:none'
+	| 'selected:orphan'
+	| 'selected:has-wishlist';
+
+export type CourseSortOrder = 'asc' | 'desc';
 
 export interface CourseFilterState {
 	keyword: string;
@@ -19,7 +35,6 @@ export interface CourseFilterState {
 	regexTargets: string[];
 	campus: string;
 	college: string;
-	major: string;
 	minCredit: number | null;
 	maxCredit: number | null;
 	capacityMin: number | null;
@@ -28,10 +43,12 @@ export interface CourseFilterState {
 	specialTags: string[];
 	weekSpanFilter: 'any' | 'upper' | 'lower' | 'full';
 	weekParityFilter: 'any' | 'odd' | 'even' | 'all';
-	displayOption: DisplayOptionId;
+	statusMode: CourseStatusMode;
 	limitModes: Partial<Record<LimitRuleKey, LimitMode>>;
 	sortOptionId: string;
+	sortOrder: CourseSortOrder;
 	conflictMode: ConflictFilterMode;
+	showConflictBadges: boolean;
 }
 
 export const selectionFiltersConfig = getSelectionFiltersConfig();
@@ -43,7 +60,6 @@ const DEFAULT_FILTER_STATE: CourseFilterState = {
 	regexTargets: selectionFiltersConfig.regex.targets,
 	campus: '',
 	college: '',
-	major: '',
 	minCredit: null,
 	maxCredit: null,
 	capacityMin: null,
@@ -52,17 +68,17 @@ const DEFAULT_FILTER_STATE: CourseFilterState = {
 	specialTags: [],
 	weekSpanFilter: 'any',
 	weekParityFilter: 'any',
-	displayOption: selectionFiltersConfig.displayOptions[0]?.id ?? 'all',
+	statusMode: 'all:none',
 	limitModes: {},
 	sortOptionId: selectionFiltersConfig.sortOptions[0]?.id ?? 'courseCode',
-	conflictMode: 'any'
+	sortOrder: 'asc',
+	conflictMode: 'current',
+	showConflictBadges: true
 };
 
 export interface CourseFilterOptions {
 	campuses: string[];
 	colleges: string[];
-	majors: string[];
-	displayOptions: SelectionFiltersConfig['displayOptions'];
 	limitRules: SelectionFiltersConfig['limitRules'];
 	sortOptions: SelectionFiltersConfig['sortOptions'];
 	regexTargets: string[];
@@ -77,8 +93,6 @@ export const filterOptions: CourseFilterOptions = {
 	colleges: taxonomyOptions.colleges.length
 		? taxonomyOptions.colleges
 		: collectOptions(courseCatalog.map((entry) => entry.college ?? '')),
-	majors: taxonomyOptions.majors.length ? taxonomyOptions.majors : collectOptions(courseCatalog.map((entry) => entry.major ?? '')),
-	displayOptions: selectionFiltersConfig.displayOptions,
 	limitRules: selectionFiltersConfig.limitRules,
 	sortOptions: selectionFiltersConfig.sortOptions,
 	regexTargets: selectionFiltersConfig.regex.targets,

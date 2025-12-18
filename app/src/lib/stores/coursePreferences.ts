@@ -1,20 +1,10 @@
 import { browser } from '$app/environment';
-import { writable, derived } from 'svelte/store';
-import { resolveTermId } from '../../config/term';
+import { derived, writable } from 'svelte/store';
+import type { TermState } from '$lib/data/termState/types';
+import { dispatchTermAction, termState } from './termStateStore';
 
-export type SelectionMode = 'allowOverflowMode' | 'overflowSpeedRaceMode';
-
-const termId = resolveTermId();
 const CROSS_KEY = 'course-cross-campus-enabled';
-const MODE_KEY = `selection-mode:${termId}`;
-const DEFAULT_SELECTION_MODE: SelectionMode = 'allowOverflowMode';
-
-function normalizeSelectionMode(value: string | null): SelectionMode | null {
-	if (!value) return null;
-	if (value === 'allowOverflowMode' || value === 'overbook') return 'allowOverflowMode';
-	if (value === 'overflowSpeedRaceMode' || value === 'speed') return 'overflowSpeedRaceMode';
-	return null;
-}
+export type SelectionMode = NonNullable<TermState['settings']['selectionMode']>;
 
 function loadCrossCampus(): boolean {
 	if (!browser) return false;
@@ -22,19 +12,12 @@ function loadCrossCampus(): boolean {
 	return value === 'true';
 }
 
-function loadSelectionMode(): { mode: SelectionMode; known: boolean } {
-	if (!browser) return { mode: DEFAULT_SELECTION_MODE, known: false };
-	const stored = normalizeSelectionMode(localStorage.getItem(MODE_KEY));
-	if (!stored) return { mode: DEFAULT_SELECTION_MODE, known: false };
-	return { mode: stored, known: true };
-}
-
 const crossCampusInitial = loadCrossCampus();
 export const crossCampusAllowed = writable<boolean>(crossCampusInitial);
 
-const selectionInitial = loadSelectionMode();
-export const selectionMode = writable<SelectionMode>(selectionInitial.mode);
-export const selectionModeKnown = writable<boolean>(selectionInitial.known);
+export const homeCampus = derived(termState, ($state) => ($state?.settings.homeCampus ?? '') as string);
+export const selectionMode = derived(termState, ($state) => ($state?.settings.selectionMode ?? null) as SelectionMode | null);
+export const selectionModeKnown = derived(selectionMode, (mode) => mode !== null);
 
 export const selectionModeNeedsPrompt = derived(selectionModeKnown, (known) => !known);
 
@@ -45,10 +28,12 @@ export function setCrossCampusAllowed(value: boolean) {
 	}
 }
 
+export function setHomeCampus(campus: string) {
+	const normalized = campus.trim();
+	if (!normalized) return;
+	void dispatchTermAction({ type: 'SETTINGS_UPDATE', patch: { homeCampus: normalized } });
+}
+
 export function setSelectionMode(mode: SelectionMode) {
-	selectionMode.set(mode);
-	selectionModeKnown.set(true);
-	if (browser) {
-		localStorage.setItem(MODE_KEY, mode);
-	}
+	void dispatchTermAction({ type: 'SETTINGS_UPDATE', patch: { selectionMode: mode } });
 }

@@ -30,7 +30,6 @@
 
 .dockview-theme-app .dv-groupview {
   border-radius: var(--app-radius-lg);
-  padding: var(--app-space-1);
 }
 
 .dockview-theme-app .dv-tabs-and-actions-container {
@@ -51,18 +50,23 @@
   background: transparent;
 }
 
-.dockview-theme-app .dv-content-container > .dv-content {
+.dockview-theme-app .dv-content-container > * {
   border-radius: var(--app-radius-lg);
-  background: var(--app-color-bg);
-  border: 1px solid color-mix(in srgb, var(--app-color-border-subtle) 80%, transparent);
-  padding: var(--app-space-2);
+  background: transparent;
   min-height: 0;
+  min-width: 0;
   display: flex;
-  box-shadow: 0 10px 30px color-mix(in srgb, var(--app-color-fg) 5%, transparent);
 }
 
-.dockview-theme-app .dv-content-container > .dv-content > * {
+.dockview-theme-app .dv-content-container > * > * {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+}
+
+/* Dockview should not force framing; panels (ListSurface) own their surface/border/shadow via `--app-*`. */
+
+/* Prevent accidental removal of core workspace panels (no close button on tabs). */
+.dockview-theme-app .dv-default-tab-action {
+  display: none !important;
 }

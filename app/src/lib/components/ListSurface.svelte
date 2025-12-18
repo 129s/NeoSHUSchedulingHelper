@@ -1,9 +1,10 @@
 <svelte:options runes={false} />
 
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 	import { translator } from '$lib/i18n';
 	import AppButton from '$lib/primitives/AppButton.svelte';
+	import type { ListSurfaceScrollDetail } from './listSurfaceEvents';
 
 export let title: string | null = null;
 export let subtitle: string | null = null;
@@ -14,13 +15,25 @@ export let initialSticky = false;
 export let bodyScrollable = true;
 export let bodyPadding = false;
 export let footerEnabled = true;
+export let bottomThresholdPx = 120;
+export let scrollRoot: HTMLElement | null = null;
 
-const dispatch = createEventDispatcher<{ scroll: Event }>();
+const dispatch = createEventDispatcher<{
+	scroll: ListSurfaceScrollDetail;
+	nearBottom: ListSurfaceScrollDetail;
+}>();
 
 let pinned = initialSticky;
+let bodyElement: HTMLElement | null = null;
+let slotElement: HTMLElement | null = null;
+let bottomCheckTimer: number | null = null;
+let resizeObserver: ResizeObserver | null = null;
+let mutationObserver: MutationObserver | null = null;
+let observersReady = false;
 
 let t = (key: string) => key;
 $: t = $translator;
+$: scrollRoot = bodyElement;
 
 $: hasSearch = Boolean($$slots.search);
 $: hasFilters = Boolean($$slots.filters) || Boolean($$slots['filters-settings']);
@@ -37,14 +50,85 @@ function togglePinned() {
 	pinned = !pinned;
 }
 
+function buildScrollDetail(container: HTMLElement, rawEvent: Event): ListSurfaceScrollDetail {
+	return {
+		container,
+		scrollTop: container.scrollTop,
+		scrollHeight: container.scrollHeight,
+		clientHeight: container.clientHeight,
+		rawEvent
+	};
+}
+
+function maybeDispatchNearBottom(detail: ListSurfaceScrollDetail) {
+	const remaining = detail.scrollHeight - detail.scrollTop - detail.clientHeight;
+	if (remaining < bottomThresholdPx) dispatch('nearBottom', detail);
+}
+
 function handleScroll(event: Event) {
-	dispatch('scroll', event);
+	const container = event.currentTarget;
+	if (!(container instanceof HTMLElement)) return;
+	const detail = buildScrollDetail(container, event);
+	dispatch('scroll', detail);
+	maybeDispatchNearBottom(detail);
 }
 
 function handleBodyScroll(event: Event) {
 	if (!bodyScrollable) return;
 	handleScroll(event);
 }
+
+function scheduleBottomCheck(rawEvent: Event) {
+	if (!bodyScrollable) return;
+	if (!bodyElement) return;
+	if (bottomCheckTimer) clearTimeout(bottomCheckTimer);
+	bottomCheckTimer = window.setTimeout(() => {
+		bottomCheckTimer = null;
+		if (!bodyElement) return;
+		const detail = buildScrollDetail(bodyElement, rawEvent);
+		maybeDispatchNearBottom(detail);
+	}, 0);
+}
+
+function setupNearBottomObservers() {
+	if (observersReady) return;
+	if (!bodyScrollable) return;
+	if (!bodyElement) return;
+	if (!slotElement) return;
+	observersReady = true;
+	requestAnimationFrame(() => scheduleBottomCheck(new Event('list-surface:init')));
+	resizeObserver = new ResizeObserver(() => scheduleBottomCheck(new Event('list-surface:resize')));
+	resizeObserver.observe(bodyElement);
+	mutationObserver = new MutationObserver(() => scheduleBottomCheck(new Event('list-surface:mutate')));
+	mutationObserver.observe(slotElement, { childList: true, subtree: true });
+}
+
+function teardownNearBottomObservers() {
+	if (!observersReady) return;
+	observersReady = false;
+	if (bottomCheckTimer) clearTimeout(bottomCheckTimer);
+	bottomCheckTimer = null;
+	resizeObserver?.disconnect();
+	resizeObserver = null;
+	mutationObserver?.disconnect();
+	mutationObserver = null;
+}
+
+$: {
+	if (!bodyScrollable) {
+		teardownNearBottomObservers();
+	} else if (bodyElement && slotElement) {
+		setupNearBottomObservers();
+	}
+}
+
+onMount(() => {
+	setupNearBottomObservers();
+});
+
+onDestroy(() => {
+	teardownNearBottomObservers();
+});
 </script>
 
 <section
@@ -89,6 +173,7 @@ function handleBodyScroll(event: Event) {
 	<div class="flex-1 min-h-0 flex flex-col">
 		<div
 			class={`list-surface__body flex flex-col flex-1 min-h-0 ${scrollGapClass} ${bodyScrollable ? 'overflow-auto' : 'overflow-hidden'} [scrollbar-gutter:stable]`}
+			bind:this={bodyElement}
 			on:scroll={handleBodyScroll}
 		>
 			{#if hasFilters}
@@ -109,7 +194,9 @@ function handleBodyScroll(event: Event) {
 			{/if}
 
 			<div class={`list-surface__slot flex flex-col flex-1 min-h-[240px] min-w-0 gap-3 pb-5 ${bodyContainerClass}`}>
+				<div style="display: contents" bind:this={slotElement}>
 				<slot />
+				</div>
 			</div>
 		</div>
 	</div>

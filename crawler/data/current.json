@@ -1,3 +1,22 @@
 [
-  "2025-16"
+  {
+    "termId": "2025-16--xkkz-43ED19C6D2A8B32DE063F0000A0A7C74",
+    "termCode": "2025-16",
+    "jwxtRound": {
+      "xkkzId": "43ED19C6D2A8B32DE063F0000A0A7C74",
+      "xklc": "1",
+      "xklcmc": "第1轮"
+    },
+    "generatedAt": 1765994348175
+  },
+  {
+    "termId": "2025-16--xkkz-458F6379768B4061E063F1000A0AC4CD",
+    "termCode": "2025-16",
+    "jwxtRound": {
+      "xkkzId": "458F6379768B4061E063F1000A0AC4CD",
+      "xklc": "2",
+      "xklcmc": "第2轮"
+    },
+    "generatedAt": 1765994392292
+  }
 ]

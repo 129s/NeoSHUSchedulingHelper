@@ -187,7 +187,6 @@
 		title={t('panels.sync.title')}
 		subtitle={format('panels.sync.currentTerm', { term: datasetMeta.semester ?? '' })}
 		density="comfortable"
-		enableStickyToggle={true}
 	>
 		<div class="flex flex-wrap items-start gap-5 min-w-0">
 			{#if storageSnapshot}
@@ -221,6 +220,11 @@
 						<li>
 							{t('panels.sync.storageCollapse', {
 								value: storageSnapshot.collapseCoursesByName ? t('dropdowns.enabled') : t('dropdowns.disabled')
+							})}
+						</li>
+						<li>
+							{t('panels.sync.storageFilterStatusControl', {
+								value: storageSnapshot.hideFilterStatusControl ? t('dropdowns.enabled') : t('dropdowns.disabled')
 							})}
 						</li>
 						<li>

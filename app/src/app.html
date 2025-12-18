@@ -3,6 +3,8 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<meta name="theme-color" content="#3556c4" />
 		%sveltekit.head%
 		<style>
 			html,
@@ -16,6 +18,8 @@
 				font-family: var(--app-font-family-sans);
 				font-size: var(--app-text-sm);
 				line-height: 1.4;
+				background: var(--app-color-bg);
+				color: var(--app-color-fg);
 			}
 
 			#app-root {

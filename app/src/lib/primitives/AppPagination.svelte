@@ -127,7 +127,7 @@
 							class={`h-7 min-w-7 px-2 rounded-[var(--app-radius-md)] border text-[clamp(var(--app-text-xs),2.2cqi,var(--app-text-sm))] tabular-nums transition-colors duration-150 ${
 								token.current
 									? 'border-[color:var(--app-color-primary)] bg-[color-mix(in_srgb,var(--app-color-primary)_16%,var(--app-color-bg))] text-[var(--app-color-fg)]'
-									: 'border-[color:var(--app-color-border-subtle)] bg-transparent text-[var(--app-color-fg)] hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]'
+									: 'border-[color:var(--app-color-control-border)] bg-transparent text-[var(--app-color-fg)] hover:bg-[color-mix(in_srgb,var(--app-color-bg)_92%,#000)]'
 							}`.trim()}
 							aria-current={token.current ? 'page' : undefined}
 							on:click={() => navigateTo(token.value)}
@@ -140,7 +140,7 @@
 
 			<input
 				type="number"
-				class="ml-auto h-7 w-[clamp(3rem,12cqi,4.5rem)] rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-2 text-center text-[clamp(var(--app-text-xs),2.2cqi,var(--app-text-sm))] tabular-nums"
+				class="ml-auto h-7 w-[clamp(3rem,12cqi,4.5rem)] rounded-[var(--app-radius-md)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] px-2 text-center text-[clamp(var(--app-text-xs),2.2cqi,var(--app-text-sm))] tabular-nums"
 				min="1"
 				max={totalPages}
 				bind:value={jumpDraft}

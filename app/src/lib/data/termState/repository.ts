@@ -8,6 +8,10 @@ import { seedSelectedCourseIds, courseCatalogMap } from '../catalog/courseCatalo
 import { deriveGroupKey } from './groupKey';
 import { repairDatasetResolve } from './repair';
 
+// NOTE: Prepared for `docs/STATE.md` §7.6 cursor rewind semantics, but intentionally NOT enabled yet.
+// When enabled, load should verify cursor-state alignment (via checkpoints) and attempt to rewind state to cursor.
+// import { computeCoreStateMd5, rollbackTermStateToIndex } from './historyRollback';
+
 const TERM_STATE_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS term_state (
 	term_id TEXT PRIMARY KEY,
@@ -36,6 +40,17 @@ function createInitialState(termId: TermId, datasetSig: string): TermState {
 	const initialSelected = Array.from(seedSelectedCourseIds).filter((id) => courseCatalogMap.has(id));
 	const selected = canonicalizeEntryIds(initialSelected);
 	const initialSelectedSig = '0'.repeat(32);
+	const campuses = new Set<string>();
+	for (const entry of courseCatalogMap.values()) {
+		const campus = (entry.campus ?? '').trim();
+		if (campus) campuses.add(campus);
+	}
+	const campusList = Array.from(campuses).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+	const defaultHomeCampus =
+		campusList.find((campus) => campus.includes('宝山主区')) ??
+		campusList.find((campus) => campus.includes('宝山')) ??
+		campusList[0] ??
+		'宝山';
 	return {
 		schemaVersion: 1,
 		termId,
@@ -77,7 +92,7 @@ function createInitialState(termId: TermId, datasetSig: string): TermState {
 			],
 			checkpoints: []
 		},
-		settings: {
+			settings: {
 			granularity: {
 				allCourses: 'groupPreferred',
 				candidates: 'groupPreferred',
@@ -85,9 +100,16 @@ function createInitialState(termId: TermId, datasetSig: string): TermState {
 				selected: 'sectionOnly',
 				jwxt: 'sectionOnly'
 			},
-			courseListPolicy: 'ONLY_OK_NO_RESCHEDULE',
-			jwxt: {
-				autoSyncEnabled: false,
+			homeCampus: defaultHomeCampus,
+			selectionMode: null,
+			autoSolveEnabled: false,
+				autoSolveBackup: null,
+				autoSolveTimeSoft: { avoidEarlyWeight: 0, avoidLateWeight: 0 },
+				courseListPolicy: 'ALLOW_OK_WITH_RESELECT',
+				pagination: { mode: 'paged', pageSize: 50, pageNeighbors: 4 },
+				calendar: { showWeekends: false },
+				jwxt: {
+					autoSyncEnabled: false,
 				autoSyncIntervalSec: 120,
 				autoPreviewEnabled: true,
 				autoPushEnabled: false
@@ -95,6 +117,15 @@ function createInitialState(termId: TermId, datasetSig: string): TermState {
 		}
 	};
 }
+
+const datasetGroupKeyCounts = (() => {
+	const map = new Map<string, number>();
+	for (const entry of courseCatalogMap.values()) {
+		const key = deriveGroupKey(entry) as unknown as string;
+		map.set(key, (map.get(key) ?? 0) + 1);
+	}
+	return map;
+})();
 
 function canonicalizeEntryIds(ids: string[]) {
 	return Array.from(new Set(ids))
@@ -112,7 +143,7 @@ async function computeSelectedSig(selected: string[]) {
 	return digestToMd5LikeHex(selected.join('\n'));
 }
 
-export async function loadOrInitTermState(termOverrides?: Partial<TermConfig>): Promise<LoadedTermState> {
+	export async function loadOrInitTermState(termOverrides?: Partial<TermConfig>): Promise<LoadedTermState> {
 	const layer = await getQueryLayer();
 	await layer.exec(TERM_STATE_TABLE_SQL);
 	const termId = getTermConfig(termOverrides).currentTermId as TermId;
@@ -131,27 +162,122 @@ export async function loadOrInitTermState(termOverrides?: Partial<TermConfig>): 
 			{ termId, payload, updatedAt: Date.now() }
 		);
 		return { state: initial, version: 0 };
-	}
-	const [row] = rows;
-	const parsed = parseTermState(JSON.parse(row.payload));
-	const repaired = repairDatasetResolve(parsed);
-	if (!repaired.didRepair) return { state: parsed, version: row.version };
-	try {
-		return await commitTermState(repaired.state, row.version, termOverrides);
-	} catch (error) {
-		if (error instanceof Error && error.message === '[TermState] OCC_CONFLICT') {
-			const refreshed = await layer.exec<TermStateRow>(
-				'SELECT term_id as termId, version, payload, updated_at as updatedAt FROM term_state WHERE term_id = :termId',
-				{ termId }
-			);
+		}
+		const [row] = rows;
+		const parsed = parseTermState(JSON.parse(row.payload));
+		const repaired = repairDatasetResolve(parsed);
+		const needsSelectionModeRepair = repaired.state.settings.selectionMode === undefined;
+		const needsAutoSolveRepair = repaired.state.settings.autoSolveEnabled === undefined;
+		const needsAutoSolveBackupRepair = repaired.state.settings.autoSolveBackup === undefined;
+		const needsAutoSolveTimeSoftRepair = repaired.state.settings.autoSolveTimeSoft === undefined;
+		const needsCourseListPolicyRepair =
+			repaired.state.settings.courseListPolicy === undefined || repaired.state.settings.courseListPolicy === 'ONLY_OK_NO_RESCHEDULE';
+		const needsAutoSolveSpeedRaceRepair =
+			repaired.state.settings.selectionMode === 'overflowSpeedRaceMode' && repaired.state.settings.autoSolveEnabled === true;
+		if (
+			!repaired.didRepair &&
+			!needsSelectionModeRepair &&
+			!needsAutoSolveRepair &&
+			!needsAutoSolveBackupRepair &&
+			!needsAutoSolveTimeSoftRepair &&
+			!needsCourseListPolicyRepair &&
+			!needsAutoSolveSpeedRaceRepair
+		) {
+			return { state: parsed, version: row.version };
+		}
+		const nextState: TermState = needsSelectionModeRepair
+			? {
+					...repaired.state,
+					settings: {
+						...repaired.state.settings,
+						selectionMode: null
+					}
+			  }
+			: repaired.state;
+		const nextState2: TermState = needsAutoSolveRepair
+			? {
+					...nextState,
+					settings: {
+						...nextState.settings,
+						autoSolveEnabled: false
+					}
+			  }
+			: nextState;
+		const nextState3: TermState = needsAutoSolveBackupRepair
+			? {
+					...nextState2,
+					settings: {
+						...nextState2.settings,
+						autoSolveBackup: null
+					}
+			  }
+			: nextState2;
+		const nextState4: TermState = needsAutoSolveTimeSoftRepair
+			? {
+					...nextState3,
+					settings: {
+						...nextState3.settings,
+						autoSolveTimeSoft: { avoidEarlyWeight: 0, avoidLateWeight: 0 }
+					}
+			  }
+			: nextState3;
+		const nextState5: TermState = needsCourseListPolicyRepair
+			? {
+					...nextState4,
+					settings: {
+						...nextState4.settings,
+						courseListPolicy: 'ALLOW_OK_WITH_RESELECT'
+					}
+			  }
+			: nextState4;
+		const nextState6: TermState = needsAutoSolveSpeedRaceRepair
+			? {
+					...nextState5,
+					settings: {
+						...nextState5.settings,
+						autoSolveEnabled: false,
+						autoSolveBackup: null
+					}
+			  }
+			: nextState5;
+
+	// const ENABLE_HISTORY_CURSOR_REWIND = false;
+	// let nextState6 = nextState5;
+	// if (ENABLE_HISTORY_CURSOR_REWIND) {
+	// 	const cursor = nextState6.history.cursor;
+	// 	const endIndex = nextState6.history.entries.length - 1;
+	// 	if (cursor >= 0 && cursor < endIndex) {
+	// 		const checkpoint = nextState6.history.checkpoints.find((item) => item.atIndex === cursor) ?? null;
+	// 		const hasCheckpoint = Boolean(checkpoint?.stateMd5);
+	// 		let aligned = false;
+	// 		if (hasCheckpoint && checkpoint) {
+	// 			const md5 = await computeCoreStateMd5(nextState6);
+	// 			aligned = md5 === (checkpoint.stateMd5 as any);
+	// 		}
+	// 		if (!aligned) {
+	// 			const attempt = rollbackTermStateToIndex(nextState6, cursor, { appliedIndex: endIndex });
+	// 			nextState6 = attempt.ok
+	// 				? attempt.state
+	// 				: { ...nextState6, history: { ...nextState6.history, cursor: endIndex } };
+	// 		}
+	// 	}
+	// }
+		try {
+			return await commitTermState(nextState6, row.version, termOverrides);
+		} catch (error) {
+			if (error instanceof Error && error.message === '[TermState] OCC_CONFLICT') {
+				const refreshed = await layer.exec<TermStateRow>(
+					'SELECT term_id as termId, version, payload, updated_at as updatedAt FROM term_state WHERE term_id = :termId',
+					{ termId }
+				);
 			if (refreshed.length) {
 				const [latest] = refreshed;
 				return { state: parseTermState(JSON.parse(latest.payload)), version: latest.version };
 			}
+			}
+			throw error;
 		}
-		throw error;
 	}
-}
 
 export async function commitTermState(
 	nextState: TermState,
@@ -223,16 +349,9 @@ async function canonicalizeForCommit(state: TermState): Promise<TermState> {
 	}
 
 	const groupKeyCounts: Record<string, number> = Object.create(null);
-	for (const key of trackedGroupKeys) groupKeyCounts[key] = 0;
-	if (trackedGroupKeys.size) {
-		for (const entry of courseCatalogMap.values()) {
-			const key = deriveGroupKey(entry) as unknown as string;
-			if (!trackedGroupKeys.has(key)) continue;
-			groupKeyCounts[key] = (groupKeyCounts[key] ?? 0) + 1;
-		}
-	}
+	for (const key of trackedGroupKeys) groupKeyCounts[key] = datasetGroupKeyCounts.get(key) ?? 0;
 
-	return {
+	const canonical: TermState = {
 		...state,
 		jwxt,
 		dataset: {
@@ -248,4 +367,17 @@ async function canonicalizeForCommit(state: TermState): Promise<TermState> {
 			selectedSig: selectedSig as any
 		}
 	};
+
+	// NOTE: Prepared for cursor rewind verification, but intentionally NOT enabled yet.
+	// const ENABLE_HISTORY_CHECKPOINTS = false;
+	// if (ENABLE_HISTORY_CHECKPOINTS) {
+	// 	const stateMd5 = await computeCoreStateMd5(canonical);
+	// 	const cursor = canonical.history.cursor;
+	// 	const checkpoints = canonical.history.checkpoints
+	// 		.filter((checkpoint) => checkpoint.atIndex !== cursor)
+	// 		.slice(-63)
+	// 		.concat({ atIndex: cursor, stateMd5 });
+	// 	return { ...canonical, history: { ...canonical.history, checkpoints } };
+	// }
+	return canonical;
 }

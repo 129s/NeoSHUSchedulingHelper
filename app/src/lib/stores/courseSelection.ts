@@ -1,15 +1,13 @@
 import { get } from 'svelte/store';
-import { dispatchTermAction, selectedEntryIds, wishlistSectionIds } from './termStateStore';
+import { dispatchTermAction, selectedEntryIds, termState, wishlistSectionIds } from './termStateStore';
 
 export const selectedCourseIds = selectedEntryIds;
 export const wishlistCourseIds = wishlistSectionIds;
 
 export function selectCourse(id: string) {
 	const selected = get(selectedCourseIds);
-	const wishlist = get(wishlistCourseIds);
 	const alreadySelected = selected.has(id);
-	const wasInWishlist = wishlist.has(id);
-	if (alreadySelected && !wasInWishlist) return;
+	if (alreadySelected) return;
 
 	void dispatchTermAction({ type: 'SEL_PROMOTE_SECTION', entryId: id as any, to: 'selected' }).then((result) => {
 		if (!result.ok) {
@@ -49,30 +47,42 @@ export function toggleWishlist(id: string) {
 		});
 		return;
 	}
-	void dispatchTermAction({ type: 'SEL_DEMOTE_SECTION', entryId: id as any, to: 'all' }).then((result) => {
+	void dispatchTermAction({ type: 'SEL_UNWISHLIST_SECTION', entryId: id as any }).then((result) => {
 		if (!result.ok) console.warn('[Selection] toggleWishlist remove failed', result.error);
 	});
 }
 
 export function addToWishlist(id: string) {
+	void addToWishlistMany([id]);
+}
+
+export function addToWishlistMany(ids: string[]) {
 	const wishlist = get(wishlistCourseIds);
-	if (wishlist.has(id)) return;
-	void dispatchTermAction({ type: 'SEL_PROMOTE_SECTION', entryId: id as any, to: 'wishlist' }).then((result) => {
-		if (!result.ok) console.warn('[Selection] addToWishlist failed', result.error);
+	const entryIds = Array.from(new Set(ids)).filter((id) => !wishlist.has(id));
+	if (!entryIds.length) return;
+	void dispatchTermAction({ type: 'SEL_PROMOTE_SECTION_MANY', entryIds: entryIds as any, to: 'wishlist' }).then((result) => {
+		if (!result.ok) console.warn('[Selection] addToWishlistMany failed', result.error);
 	});
 }
 
 export function removeFromWishlist(id: string) {
+	void removeFromWishlistMany([id]);
+}
+
+export function removeFromWishlistMany(ids: string[]) {
 	const wishlist = get(wishlistCourseIds);
-	if (!wishlist.has(id)) return;
-	void dispatchTermAction({ type: 'SEL_DEMOTE_SECTION', entryId: id as any, to: 'all' }).then((result) => {
-		if (!result.ok) console.warn('[Selection] removeFromWishlist failed', result.error);
+	const entryIds = Array.from(new Set(ids)).filter((id) => wishlist.has(id));
+	if (!entryIds.length) return;
+	void dispatchTermAction({ type: 'SEL_UNWISHLIST_SECTION_MANY', entryIds: entryIds as any }).then((result) => {
+		if (!result.ok) console.warn('[Selection] removeFromWishlistMany failed', result.error);
 	});
 }
 
 export function clearWishlist() {
 	const wishlist = get(wishlistCourseIds);
-	if (!wishlist.size) return;
+	const state = get(termState);
+	const hasWishlistGroups = Boolean((state?.selection.wishlistGroups as unknown as string[] | undefined)?.length);
+	if (!wishlist.size && !hasWishlistGroups) return;
 	void dispatchTermAction({ type: 'SEL_CLEAR_WISHLIST' }).then((result) => {
 		if (!result.ok) console.warn('[Selection] clearWishlist failed', result.error);
 	});

@@ -14,10 +14,12 @@
 		DockviewComponent,
 		type DockviewIDisposable,
 		getPanelData,
+		themeLight,
 		type Direction,
 		type DockviewPanel,
 		type DockviewPanelApi,
 		type GroupPanelPartInitParameters,
+		type ITabRenderer,
 		type IContentRenderer
 	} from 'dockview-core';
 	import 'dockview-core/dist/styles/dockview.css';
@@ -60,6 +62,7 @@
 	let widthObserver: ResizeObserver | null = null;
 	let dndAssistDisposables: DockviewIDisposable[] = [];
 	let isSashAssistActive = false;
+	let workspaceFocusListener: ((event: Event) => void) | null = null;
 	let autoFallback = false;
 	let layoutError = false;
 	let errorDetail: string | null = null;
@@ -74,6 +77,14 @@
 	$: panelTitles = buildPanelTitles(t);
 
 	onMount(() => {
+		workspaceFocusListener = (event: Event) => {
+			const detail = (event as CustomEvent).detail as { panelId?: WorkspacePanelType } | undefined;
+			const panelId = detail?.panelId;
+			if (!panelId) return;
+			panelApis.get(panelId)?.setActive();
+		};
+		window.addEventListener('workspace:focus', workspaceFocusListener as EventListener);
+
 		widthObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) {
 				if (entry.target === workspaceRef) {
@@ -90,6 +101,10 @@
 	onDestroy(() => {
 		widthObserver?.disconnect();
 		widthObserver = null;
+		if (workspaceFocusListener) {
+			window.removeEventListener('workspace:focus', workspaceFocusListener as EventListener);
+			workspaceFocusListener = null;
+		}
 		teardownDockview();
 	});
 
@@ -136,7 +151,9 @@
 		try {
 			dockview = new DockviewComponent(dockHost, {
 				createComponent: ({ name }) => createRenderer(assertPanelType(name)),
+				createTabComponent: () => createNoCloseTabRenderer(),
 				className: 'dockview-theme-app',
+				theme: themeLight,
 				dndEdges: {
 					...dndEdgesNormal
 				},
@@ -274,6 +291,31 @@
 		};
 	}
 
+	function createNoCloseTabRenderer(): ITabRenderer {
+		const element = document.createElement('div');
+		element.className = 'dv-default-tab';
+		const content = document.createElement('div');
+		content.className = 'dv-default-tab-content';
+		element.appendChild(content);
+
+		let titleDisposable: DockviewIDisposable | null = null;
+
+		return {
+			element,
+			init: (params) => {
+				content.textContent = params.title ?? '';
+				titleDisposable = params.api.onDidTitleChange((event) => {
+					content.textContent = event.title ?? '';
+				});
+			},
+			dispose: () => {
+				titleDisposable?.dispose();
+				titleDisposable = null;
+				element.replaceChildren();
+			}
+		};
+	}
+
 	function buildDefaultLayout() {
 		const target = dockview;
 		if (!target) return;
@@ -345,7 +387,7 @@
 		</div>
 	{:else}
 		<div
-			class="flex flex-1 min-h-0 rounded-[var(--app-radius-xl)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg-elevated)] p-1.5 shadow-[var(--app-shadow-hard)]"
+			class="flex flex-1 min-h-0 rounded-[var(--app-radius-xl)] bg-[var(--app-color-bg-elevated)] p-0 shadow-[var(--app-shadow-hard)] overflow-hidden"
 		>
 			<div bind:this={dockHost} class="dockview-theme-app flex h-full w-full min-h-0 rounded-[var(--app-radius-lg)]"></div>
 		</div>

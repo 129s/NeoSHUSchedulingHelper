@@ -5,3 +5,4 @@
 - [x] T-3 `jwxt/push` diff 增加课程名/时间/教师字段并在弹窗渲染。
 - [x] T-4 JWXT 面板接入 auto-push 开关与静默提示。
 - [x] T-5 i18n 自检：`python3 scripts/check_i18n.py all` + `cd app && npm run check`。
+- [x] T-6 对齐 `docs/STATE.md`：静默 auto-push 只允许 `ttl=120s`；`ttl=0` 必须走可见确认流。

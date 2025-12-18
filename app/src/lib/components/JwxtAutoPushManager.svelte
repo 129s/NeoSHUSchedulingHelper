@@ -16,6 +16,7 @@
 
 	const DEBOUNCE_MS = 1200;
 	const MUTE_MS = 2 * 60 * 1000;
+	const SILENT_TTL_MS: 0 | 120_000 = 120_000;
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let initialized = false;
@@ -74,6 +75,30 @@
 			await effectsDone;
 		}
 
+		const now = Date.now();
+		const muteUntil = get(jwxtAutoPushMuteUntil);
+		const silentAllowed = muteUntil > now;
+
+		if (silentAllowed) {
+			const preview = dispatchTermActionWithEffects({ type: 'JWXT_PREVIEW_PUSH', ttlMs: SILENT_TTL_MS });
+			const previewDispatched = await preview.result;
+			if (!previewDispatched.ok) return;
+			await preview.effectsDone;
+
+			const afterPreview = get(termState);
+			const ticket = afterPreview?.jwxt.pushTicket;
+			if (!ticket) return;
+			if (!ticket.diff.toEnroll.length && !ticket.diff.toDrop.length) return;
+
+			if (ticket.ttlMs === SILENT_TTL_MS) {
+				const push = dispatchTermActionWithEffects({ type: 'JWXT_CONFIRM_PUSH' });
+				const pushed = await push.result;
+				if (!pushed.ok) return;
+				await push.effectsDone;
+				return;
+			}
+		}
+
 		const preview = dispatchTermActionWithEffects({ type: 'JWXT_PREVIEW_PUSH', ttlMs: 0 });
 		const previewDispatched = await preview.result;
 		if (!previewDispatched.ok) return;
@@ -83,17 +108,6 @@
 		const ticket = afterPreview?.jwxt.pushTicket;
 		if (!ticket) return;
 		if (!ticket.diff.toEnroll.length && !ticket.diff.toDrop.length) return;
-
-		const now = Date.now();
-		const muteUntil = get(jwxtAutoPushMuteUntil);
-
-		if (muteUntil > now) {
-			const push = dispatchTermActionWithEffects({ type: 'JWXT_CONFIRM_PUSH' });
-			const pushed = await push.result;
-			if (!pushed.ok) return;
-			await push.effectsDone;
-			return;
-		}
 
 		pendingDiff = ticket.diff;
 		confirmBody = t('panels.jwxt.confirm.autoPushBody', {
@@ -112,10 +126,6 @@
 			inFlight = true;
 			confirmError = '';
 
-			if (confirmMute2m) {
-				jwxtAutoPushMuteUntil.set(Date.now() + MUTE_MS);
-			}
-
 			const push = dispatchTermActionWithEffects({ type: 'JWXT_CONFIRM_PUSH' });
 			const pushed = await push.result;
 			if (!pushed.ok) throw new Error(pushed.error.message);
@@ -125,7 +135,12 @@
 			if (after?.jwxt.syncState === 'REMOTE_DIRTY' && after.jwxt.pushTicket) {
 				pendingDiff = after.jwxt.pushTicket.diff;
 				confirmBody = t('panels.jwxt.confirm.remoteChangedBody');
+				confirmMute2m = false;
 				return;
+			}
+
+			if (confirmMute2m) {
+				jwxtAutoPushMuteUntil.set(Date.now() + MUTE_MS);
 			}
 
 			confirmOpen = false;

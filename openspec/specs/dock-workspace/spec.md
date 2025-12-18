@@ -41,6 +41,7 @@ DockIDE + DockPanelShell + MinimalWorkspace rely on UnoCSS utilities (`flex`, `g
 ### Requirement: Dockview configuration
 - Instantiate one `DockviewComponent` per DockIDE when the viewport is wide enough (default auto fallback thresholds: enter fallback ≤960px, exit ≥1180px).
 - Register panels via `workspacePanels` map; each renderer forwards translator titles via `panelTitleMap`.
+- DockIDE tabs are **non-closable** (no `x` close affordance) to keep the workspace’s core panels from being accidentally removed.
 - `className='dockview-theme-app'` ties Dockview theme tokens to the Virtual Theme Layer.
 - Horizontal drag handles, tabs, and watermarks inherit `--app-*` colors in `dockview.css`.
 - Floating groups are enabled (free-floating windows within the viewport) unless explicitly disabled for a future mobile-only mode.

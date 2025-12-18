@@ -82,9 +82,31 @@ export const DEFAULT_FIELD_VALUES: Record<string, string> = {
 export type SelectionPageFields = Record<string, string>;
 export type JwxtContext = Record<string, string>;
 
+export type JwxtRoundTab = {
+	kklxdm: string;
+	xkkzId: string;
+	njdmId: string;
+	zyhId: string;
+	kklxLabel: string;
+	active: boolean;
+};
+
+export type JwxtSelectOption = {
+	value: string;
+	label: string;
+	selected: boolean;
+};
+
 export function buildSelectionIndexUrl(): string {
 	const cfg = getJwxtConfig();
 	const url = new URL(cfg.selectionIndexPath, cfg.jwxtHost);
+	url.searchParams.set('gnmkdm', cfg.defaultGnmkdm);
+	return url.toString();
+}
+
+export function buildSelectionDisplayUrl(): string {
+	const cfg = getJwxtConfig();
+	const url = new URL(cfg.selectionDisplayPath, cfg.jwxtHost);
 	url.searchParams.set('gnmkdm', cfg.defaultGnmkdm);
 	return url.toString();
 }
@@ -156,6 +178,70 @@ export function parseSelectionPageFields(html: string): SelectionPageFields {
 		fields[id] = attrs.value ?? '';
 	}
 	return fields;
+}
+
+export function parseSelectionRoundTabs(html: string): JwxtRoundTab[] {
+	const tabs: JwxtRoundTab[] = [];
+
+	const re =
+		/<li\b([^>]*)>\s*<a\b([^>]*)onclick="([^"]*queryCourse[^"]*)"([^>]*)>([\s\S]*?)<\/a>\s*<\/li>/gi;
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(html)) !== null) {
+		const liAttrs = match[1] ?? '';
+		const onclick = match[3] ?? '';
+		const innerHtml = match[5] ?? '';
+
+		const args = Array.from(onclick.matchAll(/['"]([^'"]+)['"]/g)).map((m) => (m[1] ?? '').trim());
+		const kklxdm = args[0] ?? '';
+		const xkkzId = args[1] ?? '';
+		const njdmId = args[2] ?? '';
+		const zyhId = args[3] ?? '';
+		const kklxLabel = decodeHtml(innerHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+		if (!kklxdm || !xkkzId) continue;
+		tabs.push({
+			kklxdm,
+			xkkzId,
+			njdmId,
+			zyhId,
+			kklxLabel,
+			active: /\bactive\b/i.test(liAttrs)
+		});
+	}
+	return tabs;
+}
+
+function decodeHtml(text: string): string {
+	return text
+		.replace(/&nbsp;/gi, ' ')
+		.replace(/&amp;/gi, '&')
+		.replace(/&lt;/gi, '<')
+		.replace(/&gt;/gi, '>')
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;/g, "'");
+}
+
+export function parseSelectOptions(html: string, selectId: string): JwxtSelectOption[] {
+	const selectRe = new RegExp(
+		`<select\\\\b[^>]*\\\\bid\\\\s*=\\\\s*["']${selectId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}["'][^>]*>([\\\\s\\\\S]*?)<\\\\/select>`,
+		'i'
+	);
+	const selectMatch = selectRe.exec(html);
+	if (!selectMatch) return [];
+	const inner = selectMatch[1] ?? '';
+
+	const options: JwxtSelectOption[] = [];
+	const optionRe = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi;
+	let match: RegExpExecArray | null;
+	while ((match = optionRe.exec(inner)) !== null) {
+		const attrsRaw = match[1] ?? '';
+		const labelRaw = match[2] ?? '';
+		const attrs = parseAttributes(`<option ${attrsRaw}>`);
+		const value = attrs.value ?? '';
+		const selected = /\bselected\b/i.test(attrsRaw);
+		const label = decodeHtml(labelRaw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+		options.push({ value, label, selected });
+	}
+	return options;
 }
 
 export function buildQueryContext(fields: SelectionPageFields): JwxtContext {

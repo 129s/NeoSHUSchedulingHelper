@@ -41,8 +41,20 @@ function addWishlistSection(state: TermState, entryId: string) {
 	return Array.from(next) as any;
 }
 
+function addWishlistSections(state: TermState, entryIds: string[]) {
+	const next = new Set(state.selection.wishlistSections);
+	for (const entryId of entryIds) next.add(entryId as any);
+	return Array.from(next) as any;
+}
+
 function removeWishlistSection(state: TermState, entryId: string) {
 	return state.selection.wishlistSections.filter((id) => id !== entryId) as any;
+}
+
+function removeWishlistSections(state: TermState, entryIds: string[]) {
+	if (!entryIds.length) return state.selection.wishlistSections as any;
+	const removeSet = new Set(entryIds);
+	return state.selection.wishlistSections.filter((id) => !removeSet.has(id as any)) as any;
 }
 
 function addWishlistGroup(state: TermState, groupKey: GroupKey) {
@@ -58,13 +70,11 @@ function removeWishlistGroup(state: TermState, groupKey: GroupKey) {
 function ensureWishlistAnchorsForEntry(state: TermState, entryId: string) {
 	const entry = courseCatalogMap.get(entryId);
 	if (!entry) return state;
-	const groupKey = deriveGroupKey(entry);
 	return {
 		...state,
 		selection: {
 			...state.selection,
-			wishlistSections: addWishlistSection(state, entryId),
-			wishlistGroups: addWishlistGroup(state, groupKey)
+			wishlistSections: addWishlistSection(state, entryId)
 		}
 	};
 }
@@ -111,18 +121,34 @@ function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function jwxtPairKey(pair: JwxtPair) {
+	return `${pair.kchId}::${pair.jxbId}`;
+}
+
 function mapEntryIdToJwxtPair(entryId: string): JwxtPair | null {
 	const entry = courseCatalogMap.get(entryId);
 	if (!entry) return null;
 	return { kchId: entry.courseCode, jxbId: entry.sectionId };
 }
 
+let cachedJwxtPairToEntryId: Map<string, string> | null = null;
+
+function resolveEntryIdFromJwxtPair(pair: JwxtPair): string | null {
+	if (!cachedJwxtPairToEntryId) {
+		const map = new Map<string, string>();
+		for (const entry of courseCatalogMap.values()) {
+			map.set(`${entry.courseCode}::${entry.sectionId}`, entry.id);
+		}
+		cachedJwxtPairToEntryId = map;
+	}
+	return cachedJwxtPairToEntryId.get(jwxtPairKey(pair)) ?? null;
+}
+
 function computeDiff(remote: JwxtPair[], desired: JwxtPair[]) {
-	const key = (pair: JwxtPair) => `${pair.kchId}::${pair.jxbId}`;
-	const remoteSet = new Set(remote.map(key));
-	const desiredSet = new Set(desired.map(key));
-	const toEnroll = desired.filter((pair) => !remoteSet.has(key(pair)));
-	const toDrop = remote.filter((pair) => !desiredSet.has(key(pair)));
+	const remoteSet = new Set(remote.map(jwxtPairKey));
+	const desiredSet = new Set(desired.map(jwxtPairKey));
+	const toEnroll = desired.filter((pair) => !remoteSet.has(jwxtPairKey(pair)));
+	const toDrop = remote.filter((pair) => !desiredSet.has(jwxtPairKey(pair)));
 	return { toEnroll, toDrop };
 }
 
@@ -146,8 +172,7 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 						...state,
 						selection: {
 							...state.selection,
-							wishlistSections: addWishlistSection(state, action.entryId),
-							wishlistGroups: addWishlistGroup(state, groupKey)
+							wishlistSections: addWishlistSection(state, action.entryId)
 						}
 					},
 					{
@@ -161,18 +186,17 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 				return { state: next, effects: [] };
 			}
 
-			const next: TermState = appendHistory(
-				{
-					...state,
-					selection: {
-						...state.selection,
-						selected: addSelected(state, action.entryId),
-						wishlistSections: removeWishlistSection(state, action.entryId)
-					}
-				},
-				{
-					id: `sel:selected:${action.entryId}`,
-					at: nowEpochMs(),
+				const next: TermState = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							selected: addSelected(state, action.entryId)
+						}
+					},
+					{
+						id: `sel:selected:${action.entryId}`,
+						at: nowEpochMs(),
 					type: 'selection',
 					label: '选上班次',
 					details: { entryId: action.entryId }
@@ -180,11 +204,56 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			);
 			return { state: next, effects: [] };
 		}
-		case 'SEL_DEMOTE_SECTION': {
-			if (!courseCatalogMap.has(action.entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${action.entryId}`);
+		case 'SEL_PROMOTE_SECTION_MANY': {
+			if (action.to !== 'wishlist') {
+				throw new Error('INVALID_ACTION:SEL_PROMOTE_SECTION_MANY');
+			}
 
-			if (action.to === 'all') {
-				const next = appendHistory(
+			const entryIds = Array.from(new Set(action.entryIds as unknown as string[]));
+			if (!entryIds.length) return { state, effects: [] };
+
+			const selectedGroupMap = new Map<string, string>();
+			for (const id of state.selection.selected as unknown as string[]) {
+				const entry = courseCatalogMap.get(id);
+				if (!entry) continue;
+				selectedGroupMap.set(deriveGroupKey(entry), id);
+			}
+
+			for (const entryId of entryIds) {
+				const entry = courseCatalogMap.get(entryId);
+				if (!entry) throw new Error(`UNKNOWN_ENTRY_ID:${entryId}`);
+				const groupKey = deriveGroupKey(entry);
+				const existing = selectedGroupMap.get(groupKey);
+				if (existing && existing !== entryId) {
+					throw new Error(`DUPLICATE_GROUP_SELECTED:${groupKey}`);
+				}
+			}
+
+			const next = appendHistory(
+				{
+					...state,
+					selection: {
+						...state.selection,
+						wishlistSections: addWishlistSections(state, entryIds)
+					}
+				},
+				{
+					id: `sel:wishlist-many:${entryIds.length}`,
+					at: nowEpochMs(),
+					type: 'selection',
+					label: '收藏班次（批量）',
+					details: { count: entryIds.length }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+			case 'SEL_DEMOTE_SECTION': {
+				if (!courseCatalogMap.has(action.entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${action.entryId}`);
+
+				if (action.to === 'all') {
+					const wasSelected = (state.selection.selected as unknown as string[]).includes(action.entryId as any);
+					const wasWishlist = (state.selection.wishlistSections as unknown as string[]).includes(action.entryId as any);
+					const next = appendHistory(
 					{
 						...state,
 						selection: {
@@ -198,36 +267,140 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 						at: nowEpochMs(),
 						type: 'selection',
 						label: '移除班次',
+						details: { entryId: action.entryId, wasSelected, wasWishlist }
+					}
+				);
+				// Wishlist is explicit favorites only; no auto-anchor on leaving Selected.
+				return { state: next, effects: [] };
+			}
+
+				const base: TermState = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							selected: removeSelected(state, action.entryId),
+							wishlistSections: addWishlistSection(state, action.entryId)
+						}
+					},
+					{
+						id: `sel:demote:${action.entryId}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '退选到愿望单',
+						details: { entryId: action.entryId }
+					}
+				);
+				return { state: ensureWishlistAnchorsForEntry(base, action.entryId), effects: [] };
+			}
+			case 'SEL_DEMOTE_SECTION_MANY': {
+				if (action.to !== 'wishlist') {
+					throw new Error('INVALID_ACTION:SEL_DEMOTE_SECTION_MANY');
+				}
+
+				const entryIds = Array.from(new Set(action.entryIds as unknown as string[]));
+				if (!entryIds.length) return { state, effects: [] };
+				for (const entryId of entryIds) {
+					if (!courseCatalogMap.has(entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${entryId}`);
+				}
+
+				const removeSet = new Set(entryIds);
+				const next = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							selected: (state.selection.selected as unknown as string[]).filter((id) => !removeSet.has(id as any)) as any,
+							wishlistSections: addWishlistSections(state, entryIds)
+						}
+					},
+					{
+						id: `sel:demote-many:${entryIds.length}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '退选到愿望单（批量）',
+						details: { count: entryIds.length }
+					}
+				);
+
+				let anchored = next;
+				for (const entryId of entryIds) anchored = ensureWishlistAnchorsForEntry(anchored, entryId);
+				return { state: anchored, effects: [] };
+			}
+			case 'SEL_DROP_SELECTED_SECTION': {
+				if (!courseCatalogMap.has(action.entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${action.entryId}`);
+				if (!state.selection.selected.includes(action.entryId)) return { state, effects: [] };
+
+				const next = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							selected: removeSelected(state, action.entryId)
+						}
+					},
+					{
+						id: `sel:drop:${action.entryId}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '退课',
 						details: { entryId: action.entryId }
 					}
 				);
 				return { state: next, effects: [] };
 			}
+			case 'SEL_UNWISHLIST_SECTION': {
+				if (!courseCatalogMap.has(action.entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${action.entryId}`);
+				if (!state.selection.wishlistSections.includes(action.entryId)) return { state, effects: [] };
 
-			const base: TermState = appendHistory(
-				{
-					...state,
-					selection: {
-						...state.selection,
-						selected: removeSelected(state, action.entryId),
-						wishlistSections: addWishlistSection(state, action.entryId)
-					}
-				},
-				{
-					id: `sel:demote:${action.entryId}`,
-					at: nowEpochMs(),
-					type: 'selection',
-					label: '退选到愿望单',
-					details: { entryId: action.entryId }
-				}
-			);
-			return { state: ensureWishlistAnchorsForEntry(base, action.entryId), effects: [] };
-		}
-		case 'SEL_PROMOTE_GROUP': {
-			if (action.to === 'wishlist') {
 				const next = appendHistory(
 					{
 						...state,
+						selection: {
+							...state.selection,
+							wishlistSections: removeWishlistSection(state, action.entryId)
+						}
+					},
+					{
+						id: `sel:unwishlist:${action.entryId}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '取消收藏班次',
+						details: { entryId: action.entryId }
+					}
+				);
+				return { state: next, effects: [] };
+			}
+			case 'SEL_UNWISHLIST_SECTION_MANY': {
+				const entryIds = Array.from(new Set(action.entryIds as unknown as string[]));
+				if (!entryIds.length) return { state, effects: [] };
+				for (const entryId of entryIds) {
+					if (!courseCatalogMap.has(entryId)) throw new Error(`UNKNOWN_ENTRY_ID:${entryId}`);
+				}
+
+				const next = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							wishlistSections: removeWishlistSections(state, entryIds)
+						}
+					},
+					{
+						id: `sel:unwishlist-many:${entryIds.length}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '取消收藏班次（批量）',
+						details: { count: entryIds.length }
+					}
+				);
+				return { state: next, effects: [] };
+			}
+			case 'SEL_PROMOTE_GROUP': {
+				if (action.to === 'wishlist') {
+					const next = appendHistory(
+						{
+							...state,
 						selection: {
 							...state.selection,
 							wishlistGroups: addWishlistGroup(state, action.groupKey)
@@ -276,13 +449,21 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'selection',
 					label: '清空愿望单',
-					details: { count: state.selection.wishlistSections.length + state.selection.wishlistGroups.length }
+					details: {
+						count: state.selection.wishlistSections.length + state.selection.wishlistGroups.length,
+						undo: {
+							selected: state.selection.selected,
+							wishlistSections: state.selection.wishlistSections,
+							wishlistGroups: state.selection.wishlistGroups
+						}
+					}
 				}
 			);
 			return { state: next, effects: [] };
 		}
 		case 'SEL_CLEAR_WISHLIST_WITH_PRUNE': {
 			const removeSet = new Set(action.removeLockIds);
+			const removedLocks = state.solver.constraints.locks.filter((lock) => removeSet.has(lock.id));
 			const nextLocks = state.solver.constraints.locks.filter((lock) => !removeSet.has(lock.id));
 			const next = appendHistory(
 				{
@@ -301,7 +482,16 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'selection',
 					label: '清空愿望单并删除相关约束',
-					details: { removedLocks: action.removeLockIds, count: action.removeLockIds.length }
+					details: {
+						removedLocks: action.removeLockIds,
+						count: action.removeLockIds.length,
+						undo: {
+							selected: state.selection.selected,
+							wishlistSections: state.selection.wishlistSections,
+							wishlistGroups: state.selection.wishlistGroups,
+							locks: removedLocks
+						}
+					}
 				}
 			);
 			return { state: next, effects: [] };
@@ -323,24 +513,24 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 				.filter((id) => id !== currentSelected)
 				.concat(action.nextEntryId) as any;
 
-			const next = appendHistory(
-				{
-					...state,
-					selection: {
-						...state.selection,
-						selected: nextSelected,
-						wishlistSections: addWishlistSection(state, currentSelected)
-					}
-				},
-				{
-					id: `sel:reselect:${action.groupKey}`,
-					at: nowEpochMs(),
+				const next = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							selected: nextSelected,
+							// Wishlist is favorites only; reselect does not auto-add previous selection.
+						}
+					},
+					{
+						id: `sel:reselect:${action.groupKey}`,
+						at: nowEpochMs(),
 					type: 'selection',
 					label: '重选班次',
 					details: { groupKey: action.groupKey, from: currentSelected, to: action.nextEntryId }
 				}
 			);
-			return { state: ensureWishlistAnchorsForEntry(next, currentSelected), effects: [] };
+			return { state: next, effects: [] };
 		}
 		case 'DATASET_REFRESH': {
 			const next = appendHistory(state, {
@@ -415,10 +605,38 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			return { state: next, effects: [{ type: 'EFF_JWXT_FETCH_PAIRS' }] };
 		}
 		case 'JWXT_PULL_OK': {
-			if (action.unresolvedRefs?.length) {
+			const resolvedEntryIds: string[] = [];
+			const mappingUnresolved = new Set<string>(action.unresolvedRefs ?? []);
+			for (const pair of action.pairs) {
+				const entryId = resolveEntryIdFromJwxtPair(pair);
+				if (entryId) {
+					resolvedEntryIds.push(entryId);
+				} else {
+					mappingUnresolved.add(jwxtPairKey(pair));
+				}
+			}
+
+			const duplicateRefs = new Set<string>();
+			const seenGroupKeys = new Map<string, string>();
+			for (const entryId of resolvedEntryIds) {
+				const entry = courseCatalogMap.get(entryId);
+				if (!entry) continue;
+				const groupKey = deriveGroupKey(entry);
+				const existing = seenGroupKeys.get(groupKey);
+				if (existing && existing !== entryId) {
+					duplicateRefs.add(`duplicate:${existing}`);
+					duplicateRefs.add(`duplicate:${entryId}`);
+				} else {
+					seenGroupKeys.set(groupKey, entryId);
+				}
+			}
+
+			for (const ref of duplicateRefs) mappingUnresolved.add(ref);
+
+			if (mappingUnresolved.size) {
 				const frozen = {
 					reason: 'PULL_UNRESOLVED_REMOTE' as const,
-					failedList: action.unresolvedRefs.map((ref) => ({ op: 'resolve' as const, ref, error: 'unresolved' })),
+					failedList: Array.from(mappingUnresolved).map((ref) => ({ op: 'resolve' as const, ref, error: 'unresolved' })),
 					backup: {
 						wishlistGroups: state.selection.wishlistGroups,
 						wishlistSections: state.selection.wishlistSections,
@@ -445,11 +663,29 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 				);
 				return { state: next, effects: [] };
 			}
-			const next: TermState = appendHistory(
-				{
+
+			const beforeSelected = state.selection.selected as unknown as string[];
+			const nextSelected = Array.from(new Set(resolvedEntryIds)) as string[];
+			const nextSelectedSet = new Set(nextSelected);
+			const beforeSelectedSet = new Set(beforeSelected);
+
+			const removedSelected = beforeSelected.filter((id) => !nextSelectedSet.has(id));
+			const addedSelected = nextSelected.filter((id) => !beforeSelectedSet.has(id));
+
+				let nextState: TermState = {
 					...state,
+					selection: {
+						...state.selection,
+						selected: nextSelected as any,
+						wishlistSections: state.selection.wishlistSections
+					}
+				};
+
+				const next: TermState = appendHistory(
+					{
+					...nextState,
 					jwxt: {
-						...state.jwxt,
+						...nextState.jwxt,
 						syncState: 'LOCKED',
 						remoteSnapshot: { pairs: action.pairs, digest: action.digest, fetchedAt: action.fetchedAt },
 						baseline: { digest: action.digest, fetchedAt: action.fetchedAt, datasetSig: state.dataset.sig },
@@ -460,7 +696,12 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					id: `jwxt:pull-ok:${state.history.entries.length}`,
 					at: nowEpochMs(),
 					type: 'jwxt',
-					label: 'Pull 成功'
+					label: 'Pull 成功（覆盖本地已选）',
+					details: {
+						addedSelected,
+						removedSelected,
+						nextSelectedCount: nextSelected.length
+					}
 				}
 			);
 			return { state: next, effects: [] };
@@ -705,6 +946,14 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			if (action.index < 0 || action.index > state.history.cursor) {
 				throw new Error('INVALID_ACTION:history-index-out-of-range');
 			}
+			// NOTE: Planned (but not integrated) — see `openspec/changes/TERMSTATE-HISTORY-ROLLBACK-1/`.
+			// The intended behavior per `docs/STATE.md` §7.6 is to *rewind* termState by undoing
+			// reversible entries and to block when a non-reversible barrier is encountered.
+			//
+			// const barrier = computeRollbackBarrierIndex(state);
+			// if (action.index < barrier) throw new Error('INVALID_ACTION:history-rollback-blocked');
+			// const result = rollbackTermStateToIndex(state, action.index, { appliedIndex: state.history.cursor });
+			// if (!result.ok) throw new Error(`INVALID_ACTION:history-rollback-failed:${result.error}`);
 			return {
 				state: {
 					...state,
@@ -717,29 +966,389 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			};
 		}
 		case 'SETTINGS_UPDATE': {
-			const next = appendHistory(
-				{
-					...state,
-					settings: {
+			const hasHomeCampusPatch = Object.prototype.hasOwnProperty.call(action.patch, 'homeCampus');
+			let nextHomeCampus = state.settings.homeCampus;
+			if (hasHomeCampusPatch) {
+				const raw = typeof action.patch.homeCampus === 'string' ? action.patch.homeCampus : '';
+				const normalized = raw.trim();
+				if (!normalized) {
+					throw new Error('INVALID_ACTION:home-campus-empty');
+				}
+				const normalizedKey = normalizeCampusForFilter(normalized);
+				const campusSet = new Set<string>();
+				for (const entry of courseCatalogMap.values()) {
+					const campus = (entry.campus ?? '').trim();
+					if (campus) campusSet.add(normalizeCampusForFilter(campus));
+				}
+				if (campusSet.size > 0 && !campusSet.has(normalizedKey)) {
+					throw new Error('INVALID_ACTION:home-campus-unknown');
+				}
+				nextHomeCampus = normalized;
+			}
+
+			const hasPaginationPatch = Object.prototype.hasOwnProperty.call(action.patch, 'pagination');
+			let nextPagination = state.settings.pagination;
+			if (hasPaginationPatch) {
+				const patch = (action.patch.pagination ?? {}) as Partial<typeof state.settings.pagination>;
+				const nextMode = patch.mode ?? state.settings.pagination.mode;
+				if (nextMode !== 'paged' && nextMode !== 'continuous') {
+					throw new Error('INVALID_ACTION:pagination-mode-invalid');
+				}
+				const rawPageSize = patch.pageSize ?? state.settings.pagination.pageSize;
+				const pageSize = Math.floor(Number(rawPageSize));
+				if (!Number.isFinite(pageSize) || pageSize <= 0) {
+					throw new Error('INVALID_ACTION:pagination-page-size-invalid');
+				}
+				const rawNeighbors = patch.pageNeighbors ?? state.settings.pagination.pageNeighbors;
+				const pageNeighbors = Math.floor(Number(rawNeighbors));
+				if (!Number.isFinite(pageNeighbors) || pageNeighbors <= 0) {
+					throw new Error('INVALID_ACTION:pagination-page-neighbors-invalid');
+				}
+				nextPagination = { mode: nextMode, pageSize, pageNeighbors };
+			}
+
+			const hasCalendarPatch = Object.prototype.hasOwnProperty.call(action.patch, 'calendar');
+			let nextCalendar = state.settings.calendar;
+			if (hasCalendarPatch) {
+				const patch = (action.patch.calendar ?? {}) as Partial<typeof state.settings.calendar>;
+				const showWeekends = patch.showWeekends ?? state.settings.calendar.showWeekends;
+				nextCalendar = { showWeekends: Boolean(showWeekends) };
+			}
+
+				const nextAutoSolveEnabled = action.patch.autoSolveEnabled;
+				const enablingAutoSolve =
+					typeof nextAutoSolveEnabled === 'boolean' && nextAutoSolveEnabled && !state.settings.autoSolveEnabled;
+			if (enablingAutoSolve && state.settings.selectionMode === 'overflowSpeedRaceMode') {
+				throw new Error('INVALID_ACTION:auto-solve-disabled-in-speed-race');
+			}
+			const providedAutoSolveBackup = action.patch.autoSolveBackup;
+			const enablingBackup = enablingAutoSolve
+				? (providedAutoSolveBackup ?? {
+						at: nowEpochMs(),
+						selection: {
+							selected: state.selection.selected,
+							wishlistSections: state.selection.wishlistSections,
+							wishlistGroups: state.selection.wishlistGroups,
+							selectedSig: state.selection.selectedSig
+						},
+						solver: { staging: state.solver.staging },
+						ui: { collapseCoursesByName: true }
+				  })
+				: state.settings.autoSolveBackup;
+
+			const forcingDisableBySpeedRace = action.patch.selectionMode === 'overflowSpeedRaceMode';
+			const hadWishlistGroups = (state.selection.wishlistGroups as unknown as string[]).length > 0;
+			const nextAutoSolveEnabledBase =
+				typeof action.patch.autoSolveEnabled === 'boolean' ? action.patch.autoSolveEnabled : state.settings.autoSolveEnabled;
+			const hasBackupPatch = Object.prototype.hasOwnProperty.call(action.patch, 'autoSolveBackup');
+				const nextAutoSolveBackupBase = enablingAutoSolve
+					? enablingBackup
+					: hasBackupPatch
+						? ((action.patch.autoSolveBackup ?? null) as any)
+						: state.settings.autoSolveBackup;
+				const nextAutoSolveEnabledEffective = forcingDisableBySpeedRace ? false : nextAutoSolveEnabledBase;
+				const autoSolveBackupEffective = forcingDisableBySpeedRace ? null : nextAutoSolveBackupBase;
+				const autoSolveEntryFilterRunId = enablingAutoSolve
+					? `auto-solve:entry-filter:${nowEpochMs()}:${state.history.entries.length}`
+					: null;
+				const next = appendHistory(
+					{
+						...state,
+						selection: enablingAutoSolve
+							? {
+									...state.selection,
+									// Entering auto mode resets targets so the user can start from a clean slate.
+									// The previous wishlistGroups is preserved in autoSolveBackup and can be restored on exit.
+									wishlistGroups: []
+							  }
+							: state.selection,
+						settings: {
 						...state.settings,
 						...action.patch,
 						granularity: {
 							...state.settings.granularity,
 							...(action.patch.granularity ?? {})
 						},
+						homeCampus: nextHomeCampus,
 						jwxt: {
 							...state.settings.jwxt,
 							...(action.patch.jwxt ?? {})
+						},
+						pagination: nextPagination,
+						calendar: nextCalendar,
+						autoSolveEnabled: nextAutoSolveEnabledEffective,
+						autoSolveBackup: autoSolveBackupEffective
+					}
+				},
+					{
+						id: `settings:update:${state.history.entries.length}`,
+						at: nowEpochMs(),
+						type: 'settings',
+						label: enablingAutoSolve ? '自动模式：开启' : '更新设置',
+					details: {
+						...(enablingAutoSolve
+							? { kind: 'auto-solve:enable', backupAt: enablingBackup?.at, clearedWishlistGroups: hadWishlistGroups }
+							: {}),
+						undoSettings: state.settings
+					}
+					}
+				);
+				return {
+					state: next,
+					effects:
+						enablingAutoSolve && autoSolveEntryFilterRunId && hadWishlistGroups
+							? [{ type: 'EFF_AUTO_SOLVE_ENTRY_FILTER', runId: autoSolveEntryFilterRunId }]
+							: []
+				};
+			}
+			case 'AUTO_SOLVE_ENTRY_FILTER_APPLY': {
+				const beforeRaw = state.selection.wishlistGroups as unknown as string[];
+				const beforeSet = new Set(beforeRaw);
+				const before = Array.from(beforeSet).sort((a, b) => a.localeCompare(b));
+				const keep = Array.from(new Set(action.keepGroupKeys as unknown as string[])).sort((a, b) => a.localeCompare(b));
+				const drop = Array.from(new Set(action.dropGroupKeys as unknown as string[])).sort((a, b) => a.localeCompare(b));
+				const keepSet = new Set(keep);
+				const dropSet = new Set(drop);
+				for (const key of keep) {
+					if (!beforeSet.has(key)) throw new Error('INVALID_ACTION:auto-solve-entry-filter-keep-not-subset');
+				}
+				for (const key of drop) {
+					if (!beforeSet.has(key)) throw new Error('INVALID_ACTION:auto-solve-entry-filter-drop-not-subset');
+				}
+				for (const key of keep) {
+					if (dropSet.has(key)) throw new Error('INVALID_ACTION:auto-solve-entry-filter-overlap');
+				}
+				for (const key of drop) {
+					if (keepSet.has(key)) throw new Error('INVALID_ACTION:auto-solve-entry-filter-overlap');
+				}
+				if (keep.length + drop.length !== before.length) {
+					// Allowed: no-op apply that only provides a keep subset and no drop list, but the contract for this action
+					// expects a partition. Enforce for auditability.
+					throw new Error('INVALID_ACTION:auto-solve-entry-filter-not-partition');
+				}
+				const next = appendHistory(
+					{
+						...state,
+						selection: {
+							...state.selection,
+							wishlistGroups: keep as any
 						}
+					},
+					{
+						id: `auto-solve:entry-filter:${action.runId}`,
+						at: nowEpochMs(),
+						type: 'selection',
+						label: '自动模式：收敛待选目标',
+						details: {
+							kind: 'auto-solve:entry-filter',
+							runId: action.runId,
+							beforeCount: before.length,
+							keepCount: keep.length,
+							dropCount: drop.length,
+							dropGroupKeys: drop,
+							undo: { wishlistGroups: before }
+						}
+					}
+				);
+				return { state: next, effects: [] };
+			}
+			case 'AUTO_SOLVE_EXIT_KEEP': {
+				const next = appendHistory(
+					{
+						...state,
+					settings: {
+						...state.settings,
+						autoSolveEnabled: false,
+						autoSolveBackup: null
 					}
 				},
 				{
-					id: `settings:update:${state.history.entries.length}`,
+					id: `auto-solve:exit:${state.history.entries.length}`,
 					at: nowEpochMs(),
 					type: 'settings',
-					label: '更新设置'
+					label: '自动模式：退出',
+					details: { kind: 'auto-solve:exit', mode: 'keep', undoSettings: state.settings }
 				}
 			);
+			return { state: next, effects: [] };
+		}
+		case 'AUTO_SOLVE_EXIT_RESTORE': {
+			const backup = state.settings.autoSolveBackup;
+			if (!backup) throw new Error('INVALID_ACTION:auto-solve-exit-restore-missing-backup');
+			const before = state.selection;
+			const beforeStaging = state.solver.staging;
+			const nextSelection = backup.selection;
+			const next = appendHistory(
+				{
+					...state,
+					selection: nextSelection,
+					solver: {
+						...state.solver,
+						staging: backup.solver.staging
+					},
+					settings: {
+						...state.settings,
+						autoSolveEnabled: false,
+						autoSolveBackup: null
+					}
+				},
+				{
+					id: `auto-solve:restore-exit:${state.history.entries.length}`,
+					at: nowEpochMs(),
+					type: 'settings',
+					label: '自动模式：恢复并退出',
+					details: {
+						kind: 'auto-solve:exit',
+						mode: 'restore',
+						backupAt: backup.at,
+						undo: {
+							selection: before,
+							staging: beforeStaging,
+							autoSolveEnabled: state.settings.autoSolveEnabled,
+							autoSolveBackup: state.settings.autoSolveBackup
+						}
+					}
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'AUTO_SOLVE_EXIT_EXPORT': {
+			const mode = action.mode ?? 'replace-all';
+			const runId = `auto-solve-exit:${nowEpochMs()}:${state.history.entries.length}`;
+			const next = appendHistory(state, {
+				id: `auto-solve:exit-export:${runId}`,
+				at: nowEpochMs(),
+				type: 'solver',
+				label: '自动模式：导出并退出',
+				details: { kind: 'auto-solve:exit-export', runId, mode }
+			});
+			return { state: next, effects: [{ type: 'EFF_AUTO_SOLVE_EXIT_EXPORT', mode, runId }] };
+		}
+		case 'AUTO_SOLVE_RUN': {
+			const mode = action.mode ?? 'merge';
+			const runId = `auto-solve:${nowEpochMs()}:${state.history.entries.length}`;
+			const next = appendHistory(state, {
+				id: `auto-solve:run:${runId}`,
+				at: nowEpochMs(),
+				type: 'solver',
+				label: '自动编排',
+				details: { kind: 'auto-solve:run', runId, mode }
+			});
+			return { state: next, effects: [{ type: 'EFF_AUTO_SOLVE_RUN', mode, runId }] };
+		}
+		case 'AUTO_SOLVE_APPLY': {
+			if (!action.plan.length) {
+				const next = appendHistory(state, {
+					id: `auto-solve:apply-empty:${action.runId}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: '自动编排：无变更',
+					details: { kind: 'auto-solve:apply', runId: action.runId, mode: action.mode, planLength: 0, metrics: action.metrics }
+				});
+				return { state: next, effects: [] };
+			}
+
+			const before = state.selection;
+			const plannedAdds = action.plan
+				.filter((item) => item.kind === 'upsert-section')
+				.map((item) => resolveEntryIdFromUpdate(item))
+				.filter(Boolean) as string[];
+			const plannedRemovals = action.plan
+				.filter((item) => item.kind === 'remove-section')
+				.map((item) => resolveEntryIdFromUpdate(item))
+				.filter(Boolean) as string[];
+
+			const selectedBefore = new Set(before.selected as unknown as string[]);
+			const groupSelected = new Map<string, string>();
+			for (const entryId of before.selected as unknown as string[]) {
+				const entry = courseCatalogMap.get(entryId);
+				if (!entry) continue;
+				groupSelected.set(deriveGroupKey(entry), entryId);
+			}
+
+			const conflictRemovals: string[] = [];
+			for (const entryId of plannedAdds) {
+				const entry = courseCatalogMap.get(entryId);
+				if (!entry) throw new Error(`UNKNOWN_ENTRY_ID:${entryId}`);
+				const groupKey = deriveGroupKey(entry);
+				const existing = groupSelected.get(groupKey);
+				if (existing && existing !== entryId) {
+					conflictRemovals.push(existing);
+				}
+				groupSelected.set(groupKey, entryId);
+			}
+
+			const removeSet = new Set<string>();
+			for (const id of conflictRemovals) removeSet.add(id);
+			if (action.mode === 'replace-all') {
+				for (const id of plannedRemovals) removeSet.add(id);
+			}
+
+			let nextSelection: TermState = {
+				...state,
+				selection: {
+					...state.selection,
+					selected: (state.selection.selected as unknown as string[]).filter((id) => !removeSet.has(id)) as any,
+					wishlistSections: state.selection.wishlistSections,
+					wishlistGroups: state.selection.wishlistGroups
+				}
+			};
+
+			const removed: string[] = [];
+			for (const entryId of removeSet) {
+				if (!selectedBefore.has(entryId)) continue;
+				removed.push(entryId);
+			}
+
+				// Wishlist is favorites only; applying a plan does not auto-remove favorites.
+
+				const selectedSetAfterRemovals = new Set(nextSelection.selection.selected as unknown as string[]);
+				const added: string[] = [];
+				for (const entryId of plannedAdds) {
+					if (selectedSetAfterRemovals.has(entryId)) continue;
+				added.push(entryId);
+				selectedSetAfterRemovals.add(entryId);
+			}
+
+			const applied = appendHistory(
+				{
+					...nextSelection,
+					selection: {
+						...nextSelection.selection,
+						selected: Array.from(selectedSetAfterRemovals) as any
+					}
+				},
+				{
+					id: `auto-solve:apply:${action.runId}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: action.mode === 'replace-all' ? '自动编排：应用（替换）' : '自动编排：应用（合并）',
+					details: {
+						kind: 'auto-solve:apply',
+						runId: action.runId,
+						mode: action.mode,
+						planLength: action.plan.length,
+						metrics: action.metrics,
+						added,
+						removed,
+						undo: {
+							selected: before.selected,
+							wishlistSections: before.wishlistSections,
+							wishlistGroups: before.wishlistGroups
+						}
+					}
+				}
+			);
+			return { state: applied, effects: [] };
+		}
+		case 'AUTO_SOLVE_ERR': {
+			const next = appendHistory(state, {
+				id: `auto-solve:err:${action.runId}`,
+				at: nowEpochMs(),
+				type: 'solver',
+				label: '自动编排失败',
+				details: { kind: 'auto-solve:err', runId: action.runId, error: action.error }
+			});
 			return { state: next, effects: [] };
 		}
 		case 'SOLVER_ADD_LOCK': {
@@ -765,6 +1374,7 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			return { state: next, effects: [] };
 		}
 		case 'SOLVER_REMOVE_LOCK': {
+			const undoLock = state.solver.constraints.locks.find((item) => item.id === action.id) ?? null;
 			const next = appendHistory(
 				{
 					...state,
@@ -781,12 +1391,39 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'solver',
 					label: '移除硬约束',
-					details: { id: action.id }
+					details: { id: action.id, undoLock }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_REMOVE_LOCK_MANY': {
+			const ids = Array.from(new Set(action.ids)).filter((id) => typeof id === 'string' && id.length > 0);
+			if (!ids.length) return { state, effects: [] };
+			const removeSet = new Set(ids);
+			const undoLocks = state.solver.constraints.locks.filter((item) => removeSet.has(item.id));
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						constraints: {
+							...state.solver.constraints,
+							locks: state.solver.constraints.locks.filter((item) => !removeSet.has(item.id))
+						}
+					}
+				},
+				{
+					id: `solver:remove-lock-many:${state.history.entries.length}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: '批量移除硬约束',
+					details: { ids, count: ids.length, undoLocks }
 				}
 			);
 			return { state: next, effects: [] };
 		}
 		case 'SOLVER_UPDATE_LOCK': {
+			const undoBefore = state.solver.constraints.locks.find((item) => item.id === action.id) ?? null;
 			const next = appendHistory(
 				{
 					...state,
@@ -805,7 +1442,7 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'solver',
 					label: '更新硬约束',
-					details: { id: action.id }
+					details: { id: action.id, undoBefore }
 				}
 			);
 			return { state: next, effects: [] };
@@ -835,6 +1472,7 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			return { state: next, effects: [] };
 		}
 		case 'SOLVER_REMOVE_SOFT': {
+			const undoSoft = state.solver.constraints.soft.find((item) => item.id === action.id) ?? null;
 			const next = appendHistory(
 				{
 					...state,
@@ -851,12 +1489,39 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'solver',
 					label: '移除软约束',
-					details: { id: action.id }
+					details: { id: action.id, undoSoft }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_REMOVE_SOFT_MANY': {
+			const ids = Array.from(new Set(action.ids)).filter((id) => typeof id === 'string' && id.length > 0);
+			if (!ids.length) return { state, effects: [] };
+			const removeSet = new Set(ids);
+			const undoSofts = state.solver.constraints.soft.filter((item) => removeSet.has(item.id));
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						constraints: {
+							...state.solver.constraints,
+							soft: state.solver.constraints.soft.filter((item) => !removeSet.has(item.id))
+						}
+					}
+				},
+				{
+					id: `solver:remove-soft-many:${state.history.entries.length}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: '批量移除软约束',
+					details: { ids, count: ids.length, undoSofts }
 				}
 			);
 			return { state: next, effects: [] };
 		}
 		case 'SOLVER_UPDATE_SOFT': {
+			const undoBefore = state.solver.constraints.soft.find((item) => item.id === action.id) ?? null;
 			const next = appendHistory(
 				{
 					...state,
@@ -875,7 +1540,106 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					at: nowEpochMs(),
 					type: 'solver',
 					label: '更新软约束',
-					details: { id: action.id }
+					details: { id: action.id, undoBefore }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_STAGING_ADD': {
+			const key = `${action.item.kind}:${action.item.key as unknown as string}`;
+			const seen = new Set(state.solver.staging.map((item) => `${item.kind}:${item.key as unknown as string}`));
+			if (seen.has(key)) return { state, effects: [] };
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						staging: state.solver.staging.concat(action.item as any)
+					}
+				},
+				{
+					id: `solver:staging-add:${key}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: action.item.kind === 'group' ? '加入求解候选（课程组）' : '加入求解候选（班次）',
+					details: { item: action.item }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_STAGING_ADD_MANY': {
+			const items = action.items ?? [];
+			if (!items.length) return { state, effects: [] };
+
+			const staging = new Map<string, { kind: string; key: unknown }>();
+			for (const item of state.solver.staging as any[]) staging.set(`${item.kind}:${item.key as unknown as string}`, item);
+
+			for (const item of items as any[]) {
+				if (item.kind === 'section' && !courseCatalogMap.has(item.key)) throw new Error(`UNKNOWN_ENTRY_ID:${item.key}`);
+				staging.set(`${item.kind}:${item.key as unknown as string}`, item);
+			}
+
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						staging: Array.from(staging.values()) as any
+					}
+				},
+				{
+					id: `solver:staging-add-many:${items.length}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: '导入求解候选（批量）',
+					details: { count: items.length }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_STAGING_REMOVE': {
+			const key = `${action.item.kind}:${action.item.key as unknown as string}`;
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						staging: state.solver.staging.filter(
+							(item) =>
+								!(
+									item.kind === action.item.kind &&
+									(item.key as unknown as string) === (action.item.key as unknown as string)
+								)
+						) as any
+					}
+				},
+				{
+					id: `solver:staging-remove:${key}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: action.item.kind === 'group' ? '移除求解候选（课程组）' : '移除求解候选（班次）',
+					details: { item: action.item }
+				}
+			);
+			return { state: next, effects: [] };
+		}
+		case 'SOLVER_STAGING_CLEAR': {
+			if (!state.solver.staging.length) return { state, effects: [] };
+			const undo = { staging: state.solver.staging };
+			const next = appendHistory(
+				{
+					...state,
+					solver: {
+						...state.solver,
+						staging: []
+					}
+				},
+				{
+					id: `solver:staging-clear:${state.history.entries.length}`,
+					at: nowEpochMs(),
+					type: 'solver',
+					label: '清空求解候选',
+					details: { count: state.solver.staging.length, undo }
 				}
 			);
 			return { state: next, effects: [] };
@@ -980,24 +1744,14 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			for (const entryId of removeSet) {
 				if (!selectedBefore.has(entryId)) continue;
 				removed.push(entryId);
-				nextSelection = ensureWishlistAnchorsForEntry(nextSelection, entryId);
 			}
 
-			const removedFromWishlist = new Set(plannedAdds);
-			nextSelection = {
-				...nextSelection,
-				selection: {
-					...nextSelection.selection,
-					wishlistSections: (nextSelection.selection.wishlistSections as unknown as string[]).filter(
-						(id) => !removedFromWishlist.has(id)
-					) as any
-				}
-			};
+				// Wishlist is favorites only; applying a plan does not auto-remove favorites.
 
-			const selectedSetAfterRemovals = new Set(nextSelection.selection.selected as unknown as string[]);
-			const added: string[] = [];
-			for (const entryId of plannedAdds) {
-				if (selectedSetAfterRemovals.has(entryId)) continue;
+				const selectedSetAfterRemovals = new Set(nextSelection.selection.selected as unknown as string[]);
+				const added: string[] = [];
+				for (const entryId of plannedAdds) {
+					if (selectedSetAfterRemovals.has(entryId)) continue;
 				added.push(entryId);
 				selectedSetAfterRemovals.add(entryId);
 			}
@@ -1033,6 +1787,11 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 			return { state: applied, effects: [] };
 		}
 		case 'SOLVER_UNDO_LAST_APPLY': {
+			const redo = {
+				selected: state.selection.selected,
+				wishlistSections: state.selection.wishlistSections,
+				wishlistGroups: state.selection.wishlistGroups
+			};
 			const slice = state.history.entries.slice(0, state.history.cursor + 1);
 			const latestApply = slice
 				.slice()
@@ -1066,7 +1825,8 @@ export async function reduceTermState(state: TermState, action: TermAction): Pro
 					details: {
 						kind: 'solver:undo',
 						revertedEntryId: latestApply.id,
-						resultId: latestApply.details['resultId']
+						resultId: latestApply.details['resultId'],
+						redo
 					}
 				}
 			);
@@ -1164,6 +1924,13 @@ async function encodeSelectionPayloadBase64(state: TermState) {
 	};
 	const json = JSON.stringify(payload);
 	return encodeBase64(json);
+}
+
+function normalizeCampusForFilter(value: string) {
+	const normalized = value.trim();
+	if (!normalized) return '';
+	if (normalized.includes('宝山主区') || normalized.includes('宝山东区')) return '宝山';
+	return normalized;
 }
 
 async function encodeTermStateBundleBase64(state: TermState) {

@@ -170,7 +170,7 @@ const buildPanel = (template: PanelTemplate): DockPanelData => ({
 				<span>Scenario</span>
 				<select
 					bind:value={selectedScenario}
-					class="rounded-[var(--app-radius-md)] border border-[color:var(--app-color-border-subtle)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]"
+					class="rounded-[var(--app-radius-md)] border border-[color:var(--app-color-control-border)] bg-[var(--app-color-bg)] px-3 py-2 text-[var(--app-text-sm)] text-[var(--app-color-fg)]"
 				>
 					<option value="2024 Spring">2024 Spring</option>
 					<option value="2024 Fall">2024 Fall</option>
